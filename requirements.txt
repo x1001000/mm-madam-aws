@@ -1,0 +1,7 @@
+google-genai
+pandas
+fastapi
+mangum
+python-dotenv
+markdown
+mcp
