@@ -7,9 +7,9 @@
  * 3. Call MMChatWidget.init() to initialize
  */
 if (window.location.origin === 'https://dev.macromicro.me') {
-    window.MM_CHAT_API_URL = 'https://x1001000-mm-madam-api-widget.hf.space';
+    window.MM_CHAT_API_URL = 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-url.ap-northeast-1.on.aws';
 }
-if (window.location.origin === 'https://x1001000-mm-madam-api-widget.hf.space') {
+if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-url.ap-northeast-1.on.aws') {
     window.MM_DISABLE_SYSTEM_PROMPT_TOGGLE = false;
     window.MM_DISABLE_CONFIG_TOGGLE = false;
     
@@ -71,7 +71,7 @@ if (window.location.origin === 'https://x1001000-mm-madam-api-widget.hf.space') 
 
         .mm-chat-bubble::before {
             content: '';
-            background-image: url('https://huggingface.co/spaces/x1001000/mm-madam-api-widget/resolve/main/chat-bubble-icon.png');
+            background-image: url('static/chat-bubble-icon.png');
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
@@ -208,7 +208,7 @@ if (window.location.origin === 'https://x1001000-mm-madam-api-widget.hf.space') 
 
         .mm-message.assistant::before {
             content: '';
-            background-image: url('https://huggingface.co/spaces/x1001000/mm-madam-api-widget/resolve/main/mm-ai-icon.png');
+            background-image: url('static/mm-ai-icon.png');
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
@@ -738,7 +738,7 @@ if (window.location.origin === 'https://x1001000-mm-madam-api-widget.hf.space') 
                             <div class="mm-config-item">
                                 <label>
                                     💭 記得前幾輪對話:
-                                    <input type="number" id="conversationRounds" value="1" min="1" max="10" step="1" style="width: 60px; margin-left: 10px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <input type="number" id="conversationRounds" value="2" min="1" max="10" step="1" style="width: 60px; margin-left: 10px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px;">
                                 </label>
                             </div>
                             <div class="mm-config-item">

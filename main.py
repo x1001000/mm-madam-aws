@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from google import genai
 from google.genai import types
-import pandas as pd
+import csv
 import json
 import glob
 import requests
@@ -38,9 +38,23 @@ REMOTE_MCP_SERVER = os.getenv('REMOTE_MCP_SERVER')
 app = FastAPI(title="MM Madam API", version="1.0.0")
 
 # Enable CORS for website integration
+origins = [
+    "https://debug.macromicro.me",
+    "https://debug-sc.macromicro.me",
+    "https://debug-en.macromicro.me",
+    "https://dev.macromicro.me",
+    "https://dev-sc.macromicro.me",
+    "https://dev-en.macromicro.me",
+    "https://www.macromicro.me",
+    "https://sc.macromicro.me",
+    "https://en.macromicro.me",
+    "https://debug-cms.macromicro.me",
+    "https://dev-cms.macromicro.me",
+    "https://cms.macromicro.me",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure with your website domains in production
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -181,12 +195,30 @@ def get_knowledge():
         
         for csv_file in csv_files:
             try:
-                df = pd.read_csv(csv_file)
-                if 'date' in df.columns:
-                    df = df[df['date'] > AFTER_DATE]
+                # Read CSV data using native csv module
+                if csv_file.startswith('http'):
+                    import urllib.request
+                    response = urllib.request.urlopen(csv_file)
+                    lines = response.read().decode('utf-8').splitlines()
+                    reader = csv.DictReader(lines)
+                    data = list(reader)
+                else:
+                    with open(csv_file, 'r', encoding='utf-8') as f:
+                        reader = csv.DictReader(f)
+                        data = list(reader)
+                
+                # Filter by date if date column exists
+                if data and 'date' in data[0]:
+                    data = [row for row in data if row['date'] > AFTER_DATE]
+                
                 csv_file_key = csv_file.split('knowledge/')[-1].split('csv/')[-1]
-                knowledge[csv_file_key] = df
-                knowledge[csv_file_key + ' => df.iloc[:,:2].to_json'] = df.iloc[:,:2].to_json(orient='records', force_ascii=False)
+                knowledge[csv_file_key] = data
+                
+                # Create first 2 columns JSON equivalent
+                if data:
+                    first_cols = list(data[0].keys())[:2]
+                    first_two_cols = [{col: row[col] for col in first_cols if col in row} for row in data]
+                    knowledge[csv_file_key + ' => df.iloc[:,:2].to_json'] = json.dumps(first_two_cols, ensure_ascii=False)
             except Exception as e:
                 print(f"Warning: Could not load {csv_file}: {e}")
                 continue
@@ -268,9 +300,10 @@ def get_retrieval_from_charts_data_api(csv_file, user_prompt, knowledge, token_c
 
 def get_retrieval(csv_file, user_prompt, knowledge, token_counter):
     if ids := get_most_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
-        df = knowledge[csv_file]
-        df = df[df['id'].isin(ids)]
-        return df.to_json(orient='records', force_ascii=False)
+        data = knowledge[csv_file]
+        # Filter data by matching ids
+        filtered_data = [row for row in data if int(row.get('id', 0)) in ids]
+        return json.dumps(filtered_data, ensure_ascii=False)
 
 def get_retrieval_from_google_search(user_prompt, token_counter):
     system_prompt = None
@@ -351,14 +384,13 @@ def google_search_site(query):
 
 def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_counter):
     if ids := get_most_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
-        df = pd.DataFrame(columns=['id', 'html'])
-        df['id'] = ids
-        htmls = []
+        # Create list of dictionaries instead of DataFrame
+        data = []
         for _id in ids:
             with open('knowledge/' + csv_file.replace('_log', str(_id)).replace('csv', 'html')) as f:
-                htmls.append(''.join(f.readlines()))
-        df['html'] = htmls
-        return df.to_json(orient='records', force_ascii=False)
+                html_content = ''.join(f.readlines())
+            data.append({'id': _id, 'html': html_content})
+        return json.dumps(data, ensure_ascii=False)
 
 def build_system_prompt(user_prompt_type, contents, config, knowledge, token_counter):
     """Build the system prompt based on user input and configuration"""
