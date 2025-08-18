@@ -28,12 +28,14 @@ from dotenv import load_dotenv
 load_dotenv()
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 SEARCH_API_KEY = os.getenv('SEARCH_API_KEY')
-CHARTS_DATA_API = os.getenv('CHARTS_DATA_API')
-KNOWLEDGE_CSV_API = os.getenv('KNOWLEDGE_CSV_API')
 SYSTEM_PROMPT_URL = os.getenv('SYSTEM_PROMPT_URL')
+KNOWLEDGE_CSV_API = os.getenv('KNOWLEDGE_CSV_API')
+CHARTS_DATA_API = os.getenv('CHARTS_DATA_API')
+REMOTE_MCP_SERVER = os.getenv('REMOTE_MCP_SERVER')
 GITHUB_GIST_API = os.getenv('GITHUB_GIST_API')
 GITHUB_ACCESS_TOKEN = os.getenv('GITHUB_ACCESS_TOKEN')
-REMOTE_MCP_SERVER = os.getenv('REMOTE_MCP_SERVER')
+LOGGER_DEV = os.getenv('LOGGER_DEV')
+LOGGER = os.getenv('LOGGER')
 
 app = FastAPI(title="MM Madam API", version="1.0.0")
 
@@ -87,6 +89,7 @@ class ChatMessage(BaseModel):
     content: str
 
 class ChatRequest(BaseModel):
+    user_id: int
     message: str
     conversation_history: Optional[List[ChatMessage]] = []
     config: Optional[Dict[str, Any]] = {}
@@ -97,7 +100,7 @@ class ChatResponse(BaseModel):
     cost: float
     token_usage: Dict[str, int]
     conversation_history: List[ChatMessage]
-    response_time: float
+    response_seconds: float
 
 class ConfigModel(BaseModel):
     is_paid_user: bool = True
@@ -107,7 +110,7 @@ class ConfigModel(BaseModel):
     has_edm: bool = True
     has_hc: bool = True
     has_google_search: bool = True
-    conversation_rounds: int = 1
+    conversation_rounds: int = 2
     thinking_budget: int = 500
     quality_model: str = 'gemini-2.5-flash'
 
@@ -126,6 +129,7 @@ class SystemPromptResponse(BaseModel):
 
 # Global variables for token counting and system prompt storage
 last_system_prompt = ""
+session_start_time = time.time()
 
 class TokenCounter:
     def __init__(self):
@@ -470,14 +474,14 @@ def build_system_prompt(user_prompt_type, contents, config, knowledge, token_cou
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Main chat endpoint"""
-    start_time = time.time()
+    request_time = time.time()
     token_counter = TokenCounter()
     
     try:
-        print()
-        print(request.message)
-        print(request.sub_level)
-        pprint(request.config)
+        # print()
+        # print(request.message)
+        # print(request.sub_level)
+        # pprint(request.config)
         config = ConfigModel(**request.config) if request.config else ConfigModel()
         
         # Convert conversation history to Gemini format
@@ -549,7 +553,28 @@ async def chat(request: ChatRequest):
             except Exception as e:
                 print(f"Warning: Could not log to GitHub Gist: {e}")
         
-        response_time = time.time() - start_time
+        response_time = time.time()
+        response_seconds = response_time - request_time
+
+        # Logger
+        payload = {
+            "started": round(session_start_time),
+            "user_id": request.user_id,
+            "question": user_prompt,
+            "answer": response_text,
+            "prompt_token_count": token_counter.prompt_token_count,
+            "candidates_token_count": token_counter.candidates_token_count,
+            "cached_content_token_count": token_counter.cached_content_token_count,
+            "thoughts_token_count": token_counter.thoughts_token_count,
+            "tool_use_prompt_token_count": token_counter.tool_use_prompt_token_count,
+            "total_token_count": token_counter.total_token_count,
+            "cost": token_counter.total_cost(),
+            "models_used": config.quality_model,
+            "requested": round(request_time),
+            "responded": round(response_time),
+            "state": "ok"
+        }
+        requests.post(LOGGER, json=payload)
         
         # Convert markdown to HTML
         response_html = md.convert(response_text)
@@ -566,7 +591,7 @@ async def chat(request: ChatRequest):
                 "total_tokens": token_counter.total_token_count
             },
             conversation_history=updated_conversation_history,
-            response_time=response_time
+            response_seconds=response_seconds
         )
         
     except Exception as e:
