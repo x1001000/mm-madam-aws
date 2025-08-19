@@ -101,6 +101,9 @@ class ChatResponse(BaseModel):
     token_usage: Dict[str, int]
     conversation_history: List[ChatMessage]
     response_seconds: float
+    started: int
+    requested: int
+    responded: int
 
 class ConfigModel(BaseModel):
     is_paid_user: bool = True
@@ -129,7 +132,8 @@ class SystemPromptResponse(BaseModel):
 
 # Global variables for token counting and system prompt storage
 last_system_prompt = ""
-session_start_time = time.time()
+user_sessions = {}  # Track session start times by user_id
+user_conversation_histories = {}  # Store conversation history by user_id
 
 class TokenCounter:
     def __init__(self):
@@ -477,6 +481,16 @@ async def chat(request: ChatRequest):
     request_time = time.time()
     token_counter = TokenCounter()
     
+    # Track session start time per user
+    global user_sessions, user_conversation_histories
+    if request.user_id not in user_sessions:
+        user_sessions[request.user_id] = request_time
+    session_start_time = user_sessions[request.user_id]
+    
+    # Initialize conversation history for new users
+    if request.user_id not in user_conversation_histories:
+        user_conversation_histories[request.user_id] = []
+    
     try:
         # print()
         # print(request.message)
@@ -484,9 +498,12 @@ async def chat(request: ChatRequest):
         # pprint(request.config)
         config = ConfigModel(**request.config) if request.config else ConfigModel()
         
+        # Use stored conversation history if available, otherwise use request history
+        conversation_history = user_conversation_histories[request.user_id] if user_conversation_histories[request.user_id] else request.conversation_history
+        
         # Convert conversation history to Gemini format
         contents = []
-        for msg in request.conversation_history:
+        for msg in conversation_history:
             contents.append(types.Content(
                 role="user" if msg.role == "user" else "model",
                 parts=[types.Part.from_text(text=msg.content)]
@@ -530,6 +547,10 @@ async def chat(request: ChatRequest):
                 role=content.role,
                 content=content.parts[0].text
             ))
+        
+        # Store the updated conversation history for this user session
+        user_conversation_histories[request.user_id] = updated_conversation_history
+        
         print()
         pprint(updated_conversation_history)
         print()
@@ -591,7 +612,10 @@ async def chat(request: ChatRequest):
                 "total_tokens": token_counter.total_token_count
             },
             conversation_history=updated_conversation_history,
-            response_seconds=response_seconds
+            response_seconds=response_seconds,
+            started=round(session_start_time),
+            requested=round(request_time),
+            responded=round(response_time)
         )
         
     except Exception as e:
