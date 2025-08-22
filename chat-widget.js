@@ -1153,6 +1153,10 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
             }
         }
 
+        getUserId() {
+            return 1001000;
+        }
+
         addMessage(content, role = 'user', tokenData = null) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `mm-message ${role}`;
@@ -1309,6 +1313,7 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
+                        user_id: this.getUserId(),
                         message: message,
                         conversation_history: this.conversationHistory.slice(0, -1),
                         config: configData,
