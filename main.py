@@ -567,10 +567,10 @@ async def chat(request: ChatRequest):
                 }
                 r = requests.get(GITHUB_GIST_API, headers=headers)
                 if r.status_code == 200:
-                    chat_log = '# MM AI 對話紀錄（由新到舊）\n---\n'
+                    chat_log = heading = '# MM AI 對話紀錄（由新到舊）\n---\n'
                     chat_log += user_prompt + '\n---\n' + response_text + '\n\n---\n'
-                    chat_log += r.json()['files']['madam-log.md']['content']
-                    chat_log = chat_log[:100000]  # Truncate to first 100000 characters to avoid exceeding gist size limit
+                    chat_log += r.json()['files']['madam-log.md']['content'].strip(heading)
+                    chat_log = chat_log[:700000]  # Truncate to first 700000 characters to avoid exceeding gist size limit
                     payload = {'files': {'madam-log.md': {"content": chat_log}}}
                     requests.patch(GITHUB_GIST_API, headers=headers, json=payload)
             except Exception as e:
