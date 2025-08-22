@@ -1172,9 +1172,9 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                         <span>${tokenData.token_usage.completion_tokens.toLocaleString()} output</span>
                         ${tokenData.token_usage.thinking_tokens > 0 ? `<span>${tokenData.token_usage.thinking_tokens.toLocaleString()} thinking</span>` : ''}
                         <span>${tokenData.token_usage.total_tokens.toLocaleString()} tokens</span>
-                        <span>💰 $${tokenData.cost.toFixed(3)}</span>
+                        <span>💰 $${tokenData.cost ? tokenData.cost.toFixed(3) : '0.000'}</span>
                     </div>
-                    <div class="mm-time-info">⏱️ ${tokenData.response_time.toFixed(2)}s</div>
+                    <div class="mm-time-info">⏱️ ${tokenData.response_time ? tokenData.response_time.toFixed(2) : '0.00'}s</div>
                 `;
                 messageDiv.appendChild(footnoteDiv);
             }
