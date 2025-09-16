@@ -330,7 +330,7 @@ server_params = StdioServerParameters(
         "mcp-remote",
         REMOTE_MCP_SERVER,
         "--transport",
-        "sse-only"
+        "http-only"
     ]
 )
 async def get_chart_config_from_mcp(user_prompt):
@@ -355,7 +355,7 @@ async def get_chart_config_from_mcp(user_prompt):
                 )
                 # chart_json = response.automatic_function_calling_history[2].parts[0].function_response.response.result.content[0].text
                 # pprint(response.model_dump())
-                function_response = response.model_dump()['automatic_function_calling_history'][2]['parts'][0]['function_response']['response']
+                function_response = response.model_dump()['automatic_function_calling_history'][-1]['parts'][0]['function_response']['response']
                 if function_response.get('result'):
                     chart_json = function_response['result']['content'][0]['text']
                     chart_json = json.dumps(json.loads(chart_json), indent='　', ensure_ascii=False)
