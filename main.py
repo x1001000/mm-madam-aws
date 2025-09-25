@@ -186,7 +186,7 @@ def get_knowledge():
     try:
         # Local CSV files
         local_csv_files = [
-            'knowledge/chart.csv',
+            'knowledge/chart_tc.csv',
         ] + glob.glob('knowledge/hc/*/_log.csv')
         
         # Remote CSV files (only if API URL is available)
@@ -205,9 +205,8 @@ def get_knowledge():
             try:
                 # Read CSV data using native csv module
                 if csv_file.startswith('http'):
-                    import urllib.request
-                    response = urllib.request.urlopen(csv_file)
-                    lines = response.read().decode('utf-8').splitlines()
+                    r = requests.get(csv_file)
+                    lines = r.text.splitlines()
                     reader = csv.DictReader(lines)
                     data = list(reader)
                 else:
@@ -425,7 +424,7 @@ def build_system_prompt(user_prompt_type, contents, config, knowledge, token_cou
         
         # Add retrievals based on config
         if config.has_chart and config.is_paid_user:
-            if retrieval := get_retrieval_from_charts_data_api('chart.csv', user_prompt, knowledge, token_counter):
+            if retrieval := get_retrieval_from_charts_data_api('chart_tc.csv', user_prompt, knowledge, token_counter):
                 system_prompt += '\n- MM圖表的相關資料，當中時間序列（series）包含前值及最新數據，務必引用，並將文字或數據超連結至：'
                 system_prompt += f'https://{SUBDOMAIN}.macromicro.me/charts/{{id}}/{{slug}}'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
