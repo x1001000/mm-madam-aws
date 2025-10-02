@@ -560,7 +560,8 @@ async def chat(request: ChatRequest):
 
         # Replace chart hyperlink items with preview image hyperlinks
         # Pattern matches: *   [Title](url) or * [Title](url)
-        chart_hyperlink_pattern = r'\*\s+\[([^\]]+)\]\((https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+)\)(?:\n|$)'
+        # Use non-greedy matching with lookahead to handle brackets within title
+        chart_hyperlink_pattern = r'\*\s+\[(.+?)\]\((https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+)\)(?:\n|$)'
 
         def replace_with_preview(match):
             title = match.group(1)
