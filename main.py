@@ -558,13 +558,18 @@ async def chat(request: ChatRequest):
         if SUBDOMAIN == 'en':
             response_text = re.sub(r'https://(www|sc)\.macromicro', f'https://en.macromicro', response_text)
 
-        # Add chart preview images to chat responses
-        chart_urls = re.findall(r'https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+', response_text)
-        chart_urls = list(set(chart_urls))  # unique only
-        for chart_url in chart_urls:
+        # Replace chart hyperlink items with preview image hyperlinks
+        # Pattern matches: *   [Title](url) or * [Title](url)
+        chart_hyperlink_pattern = r'\*\s+\[([^\]]+)\]\((https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+)\)(?:\n|$)'
+
+        def replace_with_preview(match):
+            title = match.group(1)
+            chart_url = match.group(2)
             chart_id = chart_url.split('/charts/')[-1].split('/')[0]
             preview_url = f'https://cdn.macromicro.me/files/charts/{chart_id[-3:].zfill(3)}/{chart_id}-{SUBDOMAIN}.png'.replace('www', 'tc')
-            response_text += f'\n\n[![]({preview_url})]({chart_url})'
+            return f'[![]({preview_url})]({chart_url})\n'
+
+        response_text = re.sub(chart_hyperlink_pattern, replace_with_preview, response_text)
 
         # Log chat to GitHub Gist
         if GITHUB_GIST_API and GITHUB_ACCESS_TOKEN:
