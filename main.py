@@ -69,11 +69,11 @@ app.mount("/static", StaticFiles(directory="."), name="static")
 AFTER_DATE = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d')
 # manually update
 PRICING = {
-    # 'gemini-2.5-flash-lite-preview-06-17': {'input': 0.1, 'output': 0.4, 'thinking': 0.4, 'caching': 0.025}, TOO SMALL
-    'gemini-2.5-flash': {'input': 0.3, 'output': 2.5, 'thinking': 2.5, 'caching': 0.075},
+    'gemini-2.5-flash-lite-preview-06-17': {'input': 0.1, 'output': 0.4, 'thinking': 0.4, 'caching': 0.025},
+    'gemini-2.5-flash-preview-09-2025': {'input': 0.3, 'output': 2.5, 'thinking': 2.5, 'caching': 0.075},
     'gemini-2.5-pro': {'input': 1.25, 'output': 10, 'thinking': 10, 'caching': 0.31},
 }
-DEFAULT_MODEL = 'gemini-2.5-flash'
+DEFAULT_MODEL = 'gemini-2.5-flash-preview-09-2025'
 
 # SITE_LANGUAGES = ['繁體中文', '简体中文', 'English']
 SUBDOMAINS = ['www', 'sc', 'en']
@@ -115,7 +115,7 @@ class ConfigModel(BaseModel):
     has_google_search: bool = True
     conversation_rounds: int = 2
     thinking_budget: int = 500
-    quality_model: str = 'gemini-2.5-flash'
+    quality_model: str = DEFAULT_MODEL
 
 class SearchRequest(BaseModel):
     query: str
@@ -341,7 +341,7 @@ async def get_chart_config_from_mcp(user_prompt):
                 await session.initialize()
                 
                 response = await client.aio.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model=DEFAULT_MODEL,
                     contents=user_prompt,
                     config=genai.types.GenerateContentConfig(
                         temperature=0,
