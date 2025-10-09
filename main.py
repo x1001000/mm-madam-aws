@@ -94,6 +94,7 @@ class ChatRequest(BaseModel):
     conversation_history: Optional[List[ChatMessage]] = []
     config: Optional[Dict[str, Any]] = {}
     sub_level: Optional[str] = None
+    response_type: Optional[str] = 'html'
 
 class ChatResponse(BaseModel):
     response: str
@@ -622,7 +623,7 @@ async def chat(request: ChatRequest):
         response_html = response_html.replace('<a href=', '<a target="_blank" rel="noopener noreferrer" href=')
         
         return ChatResponse(
-            response=response_html,
+            response=response_html if request.response_type == 'html' else response_text,
             cost=token_counter.total_cost(),
             token_usage={
                 "prompt_tokens": token_counter.prompt_token_count,
