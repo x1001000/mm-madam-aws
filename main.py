@@ -560,9 +560,9 @@ async def chat(request: ChatRequest):
             response_text = re.sub(r'https://(www|sc)\.macromicro', f'https://en.macromicro', response_text)
 
         # Insert preview images under chart hyperlink items
-        # Pattern matches: *   [Title](url) or * [Title](url)
+        # Pattern matches: * [Title](url) or 1. [Title](url) (bulleted or numbered list items)
         # Use non-greedy matching with lookahead to handle brackets within title
-        chart_hyperlink_pattern = r'\*\s+\[(.+?)\]\((https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+)\)(?:\n|$)'
+        chart_hyperlink_pattern = r'(?:\*|\d+\.)\s+\[(.+?)\]\((https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+)\)(?:\n|$)'
 
         def insert_preview(match):
             title = match.group(1)
