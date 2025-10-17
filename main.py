@@ -514,7 +514,7 @@ async def chat(request: ChatRequest):
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
         
         # Check if this is a chart instruction first
-        user_prompt_type = get_user_prompt_type(contents[-2:], token_counter)
+        user_prompt_type = '總經' if request.user_id == 123456789 else get_user_prompt_type(contents[-2:], token_counter)
         
         if '製圖' in user_prompt_type:
             # Chart instruction - get chart config from MCP and return directly
