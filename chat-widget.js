@@ -222,6 +222,46 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
             border-radius: 50%;
         }
 
+        .mm-copy-button {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s ease;
+            opacity: 0;
+        }
+
+        .mm-message.assistant:hover .mm-copy-button {
+            opacity: 1;
+        }
+
+        .mm-copy-button:hover {
+            background: #e0e0e0;
+            border-color: #ccc;
+            color: #333;
+        }
+
+        .mm-copy-button.copied {
+            background: #4caf50;
+            border-color: #4caf50;
+            color: white;
+        }
+
+        .mm-copy-button svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+
         .mm-message-footnote {
             font-size: 11px;
             color: #888;
@@ -1157,11 +1197,34 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
             return 1001000;
         }
 
-        addMessage(content, role = 'user', tokenData = null) {
+        addMessage(content, role = 'user', tokenData = null, markdown = null) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `mm-message ${role}`;
             messageDiv.innerHTML = content;
-            
+
+            // Add copy button for assistant messages
+            if (role === 'assistant') {
+                // Store markdown as data attribute if provided
+                if (markdown) {
+                    messageDiv.setAttribute('data-markdown', markdown);
+                }
+
+                // Create copy button
+                const copyButton = document.createElement('button');
+                copyButton.className = 'mm-copy-button';
+                copyButton.innerHTML = `
+                    <svg viewBox="0 0 24 24" class="copy-icon">
+                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                    </svg>
+                    <span class="copy-text">Copy</span>
+                    <svg viewBox="0 0 24 24" class="check-icon" style="display: none;">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                    </svg>
+                `;
+                copyButton.addEventListener('click', () => this.copyMarkdown(copyButton, messageDiv));
+                messageDiv.appendChild(copyButton);
+            }
+
             // Add footnote for assistant messages if token data is provided
             if (role === 'assistant' && tokenData) {
                 const footnoteDiv = document.createElement('div');
@@ -1178,11 +1241,67 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 `;
                 messageDiv.appendChild(footnoteDiv);
             }
-            
+
             this.messages.appendChild(messageDiv);
             this.scrollToBottom();
         }
 
+        async copyMarkdown(button, messageDiv) {
+            const markdown = messageDiv.getAttribute('data-markdown');
+            if (!markdown) {
+                console.error('No markdown content found');
+                return;
+            }
+
+            try {
+                // Use modern Clipboard API
+                await navigator.clipboard.writeText(markdown);
+
+                // Visual feedback
+                const copyIcon = button.querySelector('.copy-icon');
+                const checkIcon = button.querySelector('.check-icon');
+                const copyText = button.querySelector('.copy-text');
+
+                // Show success state
+                copyIcon.style.display = 'none';
+                checkIcon.style.display = 'block';
+                copyText.textContent = 'Copied!';
+                button.classList.add('copied');
+
+                // Reset after 2 seconds
+                setTimeout(() => {
+                    copyIcon.style.display = 'block';
+                    checkIcon.style.display = 'none';
+                    copyText.textContent = 'Copy';
+                    button.classList.remove('copied');
+                }, 2000);
+
+            } catch (err) {
+                console.error('Failed to copy:', err);
+
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = markdown;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.select();
+
+                try {
+                    document.execCommand('copy');
+                    // Show success feedback
+                    const copyText = button.querySelector('.copy-text');
+                    copyText.textContent = 'Copied!';
+                    setTimeout(() => {
+                        copyText.textContent = 'Copy';
+                    }, 2000);
+                } catch (err2) {
+                    console.error('Fallback copy failed:', err2);
+                } finally {
+                    document.body.removeChild(textArea);
+                }
+            }
+        }
 
         showTypingIndicator() {
             const typingDiv = document.createElement('div');
@@ -1327,10 +1446,10 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 }
 
                 const data = await response.json();
-                
+
                 this.hideTypingIndicator();
-                this.addMessage(data.response, 'assistant', data);
-                
+                this.addMessage(data.response, 'assistant', data, data.response_markdown);
+
                 this.conversationHistory.push({ role: 'assistant', content: data.response });
                 
             } catch (error) {

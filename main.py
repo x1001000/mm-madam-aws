@@ -98,6 +98,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    response_markdown: str
     cost: float
     token_usage: Dict[str, int]
     conversation_history: List[ChatMessage]
@@ -624,6 +625,7 @@ async def chat(request: ChatRequest):
         
         return ChatResponse(
             response=response_html if request.response_type == 'html' else response_text,
+            response_markdown=response_text,
             cost=token_counter.total_cost(),
             token_usage={
                 "prompt_tokens": token_counter.prompt_token_count,
