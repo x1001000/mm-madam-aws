@@ -79,8 +79,8 @@ DEFAULT_MODEL = 'gemini-2.5-flash-preview-09-2025'
 SUBDOMAINS = ['www', 'sc', 'en']
 LANG_ROUTES = ['zh-tw', 'zh-cn', 'en-001']
 LANG_IDS = {
-    'zh-Hant': 0, 'zh-tw': 0, 'tw': 0, 'zh': 0,
-    'zh-Hans': 1, 'zh-cn': 1, 'cn': 1,
+    'zh-hant': 0, 'zh-tw': 0, 'tw': 0, 'zh': 0,
+    'zh-hans': 1, 'zh-cn': 1, 'cn': 1,
 }
 
 # Request/Response models
