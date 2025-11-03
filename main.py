@@ -574,6 +574,10 @@ async def chat(request: ChatRequest):
 
         response_text = re.sub(chart_hyperlink_pattern, insert_preview, response_text)
 
+        # Fix markdown rendering bug: add extra newline between bold text and list items
+        # Pattern matches: **bold text** followed by newline and list marker (* or - or 1.)
+        response_text = re.sub(r'(\*\*.+?\*\*)\n([\*\-]|\d+\.)', r'\1\n\n\2', response_text)
+
         # Log chat to GitHub Gist
         if GITHUB_GIST_API and GITHUB_ACCESS_TOKEN:
             try:
