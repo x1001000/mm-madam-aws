@@ -31,10 +31,10 @@ SEARCH_API_KEY = os.getenv('SEARCH_API_KEY')
 SYSTEM_PROMPT_URL = os.getenv('SYSTEM_PROMPT_URL')
 KNOWLEDGE_CSV_API = os.getenv('KNOWLEDGE_CSV_API')
 CHARTS_DATA_API = os.getenv('CHARTS_DATA_API')
+PODCAST_FOLDER_URL = os.getenv('PODCAST_FOLDER_URL')
 REMOTE_MCP_SERVER = os.getenv('REMOTE_MCP_SERVER')
 GITHUB_GIST_API = os.getenv('GITHUB_GIST_API')
 GITHUB_ACCESS_TOKEN = os.getenv('GITHUB_ACCESS_TOKEN')
-LOGGER_DEV = os.getenv('LOGGER_DEV')
 LOGGER = os.getenv('LOGGER')
 
 app = FastAPI(title="MM Madam API", version="1.0.0")
@@ -113,6 +113,7 @@ class ConfigModel(BaseModel):
     has_quickie: bool = True
     has_blog: bool = True
     has_edm: bool = True
+    has_podcast: bool = True
     has_hc: bool = True
     has_google_search: bool = True
     conversation_rounds: int = 2
@@ -186,10 +187,62 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 def get_knowledge():
     knowledge = {}
     try:
+        # create podcast.csv from podcast transcripts in PODCAST_FOLDER_URL
+        import gdown
+        gdown.download_folder(PODCAST_FOLDER_URL, output='/tmp/')
+
+        # Find the MM AI folder
+        mm_ai_folders = glob.glob('/tmp/MM AI*')
+        if mm_ai_folders:
+            mm_ai_folder = mm_ai_folders[0]
+            podcast_data = []
+
+            # Find all transcript files (files without extension)
+            transcript_files = [f for f in glob.glob(f'{mm_ai_folder}/*')
+                              if os.path.isfile(f) and not os.path.splitext(f)[1]]
+
+            for transcript_file in transcript_files:
+                filename = os.path.basename(transcript_file)
+                # Parse filename: YYMMDD_..._title
+                # ID is left of first underscore, title is right of last underscore
+                if '_' in filename:
+                    first_underscore = filename.index('_')
+                    last_underscore = filename.rindex('_')
+                    yymmdd = filename[:first_underscore]
+                    title = filename[last_underscore+1:]
+
+                    # Validate YYMMDD format
+                    if len(yymmdd) == 6 and yymmdd.isdigit():
+                        # Convert YYMMDD to 20YY-MM-DD
+                        yy, mm, dd = yymmdd[:2], yymmdd[2:4], yymmdd[4:6]
+                        date = f'20{yy}-{mm}-{dd}'
+
+                        # Read markdown content
+                        try:
+                            with open(transcript_file, 'r', encoding='utf-8') as f:
+                                markdown_content = f.read()
+
+                            podcast_data.append({
+                                'id': yymmdd,
+                                'title': title,
+                                'date': date,
+                                'markdown': markdown_content
+                            })
+                        except Exception as e:
+                            print(f"Warning: Could not read {transcript_file}: {e}")
+
+            # Write podcast.csv
+            if podcast_data:
+                with open('/tmp/podcast.csv', 'w', encoding='utf-8', newline='') as f:
+                    writer = csv.DictWriter(f, fieldnames=['id', 'title', 'date', 'markdown'])
+                    writer.writeheader()
+                    writer.writerows(podcast_data)
+                print(f"Created podcast.csv with {len(podcast_data)} transcripts")
+
         # Local CSV files
-        local_csv_files = [
-            'knowledge/chart_tc.csv',
-        ] + glob.glob('knowledge/hc/*/_log.csv')
+        local_csv_files = glob.glob('knowledge/hc/*/_log.csv')
+        local_csv_files.append('knowledge/chart_tc.csv')
+        local_csv_files.append('/tmp/podcast.csv')
         
         # Remote CSV files (only if API URL is available)
         remote_csv_files = []
@@ -220,18 +273,19 @@ def get_knowledge():
                 if data and 'date' in data[0]:
                     data = [row for row in data if row['date'] > AFTER_DATE]
                 
-                csv_file_key = csv_file.split('knowledge/')[-1].split('csv/')[-1]
+                # Extract key: remove 'knowledge/', '/tmp/', or 'csv/' prefixes
+                csv_file_key = csv_file.split('knowledge/')[-1].split('/tmp/')[-1].split('csv/')[-1]
                 knowledge[csv_file_key] = data
                 
                 # Create first 2 columns JSON equivalent
                 if data:
                     first_cols = list(data[0].keys())[:2]
                     first_two_cols = [{col: row[col] for col in first_cols if col in row} for row in data]
-                    knowledge[csv_file_key + ' => df.iloc[:,:2].to_json'] = json.dumps(first_two_cols, ensure_ascii=False)
+                    knowledge[csv_file_key + '=>df.iloc[:,:2].to_json'] = json.dumps(first_two_cols, ensure_ascii=False)
             except Exception as e:
                 print(f"Warning: Could not load {csv_file}: {e}")
                 continue
-                
+        print(f"Knowledge loaded successfully!\n{knowledge.keys()}")
     except Exception as e:
         print(f"Error loading knowledge: {e}")
         
@@ -278,7 +332,7 @@ def get_user_prompt_type(contents, token_counter):
 
 def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter):
     system_prompt = 'Given a user query, identify up to 5 of the most relevant IDs in the JSON below.\n'
-    system_prompt += knowledge[csv_df_json]
+    system_prompt += knowledge.get(csv_df_json, '') # in case data filtered out AFTER_DATE
     response_type = 'application/json'
     response_schema = list[int]
     tools = None
@@ -289,7 +343,7 @@ def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter):
         raise HTTPException(status_code=500, detail=f"ID retrieval error: {e}")
 
 def get_retrieval_from_charts_data_api(csv_file, user_prompt, knowledge, token_counter):
-    if ids := get_most_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
+    if ids := get_most_relevant_ids(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
         data = []
         for _id in ids:
             r = requests.get(f'{CHARTS_DATA_API}/{_id}')
@@ -308,7 +362,7 @@ def get_retrieval_from_charts_data_api(csv_file, user_prompt, knowledge, token_c
         return json.dumps(data, ensure_ascii=False)
 
 def get_retrieval(csv_file, user_prompt, knowledge, token_counter):
-    if ids := get_most_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
+    if ids := get_most_relevant_ids(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
         data = knowledge[csv_file]
         # Filter data by matching ids
         filtered_data = [row for row in data if int(row.get('id', 0)) in ids]
@@ -392,7 +446,7 @@ def google_search_site(query):
         raise HTTPException(status_code=500, detail=f"Google site search error: {e}")
 
 def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_counter):
-    if ids := get_most_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
+    if ids := get_most_relevant_ids(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
         # Create list of dictionaries instead of DataFrame
         data = []
         for _id in ids:
@@ -456,6 +510,12 @@ def build_system_prompt(user_prompt_type, contents, config, knowledge, token_cou
         if config.has_edm and config.is_paid_user:
             if retrieval := get_retrieval('edm.csv', user_prompt, knowledge, token_counter):
                 system_prompt += '\n- MM獨家報告的相關資料'
+                system_prompt += '，可引用，但切勿超連結'
+                system_prompt += f'\n```\n{retrieval}\n```\n'
+
+        if config.has_podcast and config.is_paid_user:
+            if retrieval := get_retrieval('podcast.csv', user_prompt, knowledge, token_counter):
+                system_prompt += '\n- MM Podcast的相關資料'
                 system_prompt += '，可引用，但切勿超連結'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
         

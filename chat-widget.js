@@ -765,6 +765,12 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                             </div>
                             <div class="mm-config-item">
                                 <label>
+                                    <input type="checkbox" id="hasPodcast" checked>
+                                    🎙️ MM Podcast
+                                </label>
+                            </div>
+                            <div class="mm-config-item">
+                                <label>
                                     <input type="checkbox" id="hasHc" checked>
                                     ❓ MM幫助中心
                                 </label>
@@ -867,6 +873,7 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 hasQuickie: document.getElementById('hasQuickie'),
                 hasBlog: document.getElementById('hasBlog'),
                 hasEdm: document.getElementById('hasEdm'),
+                hasPodcast: document.getElementById('hasPodcast'),
                 hasHc: document.getElementById('hasHc'),
                 hasGoogleSearch: document.getElementById('hasGoogleSearch'),
                 conversationRounds: document.getElementById('conversationRounds'),
@@ -942,13 +949,13 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 // Store current state before disabling
                 if (!this.savedFeatureStates) {
                     this.savedFeatureStates = {};
-                    ['hasChart', 'hasQuickie', 'hasBlog', 'hasEdm'].forEach(key => {
+                    ['hasChart', 'hasQuickie', 'hasBlog', 'hasEdm', 'hasPodcast'].forEach(key => {
                         this.savedFeatureStates[key] = this.configElements[key].checked;
                     });
                 }
             }
-            
-            ['hasChart', 'hasQuickie', 'hasBlog', 'hasEdm'].forEach(key => {
+
+            ['hasChart', 'hasQuickie', 'hasBlog', 'hasEdm', 'hasPodcast'].forEach(key => {
                 this.configElements[key].disabled = !isPaid;
                 if (!isPaid) {
                     this.configElements[key].checked = false;
@@ -1153,6 +1160,7 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 has_quickie: this.configElements.hasQuickie.checked,
                 has_blog: this.configElements.hasBlog.checked,
                 has_edm: this.configElements.hasEdm.checked,
+                has_podcast: this.configElements.hasPodcast.checked,
                 has_hc: this.configElements.hasHc.checked,
                 has_google_search: this.configElements.hasGoogleSearch.checked,
                 conversation_rounds: parseInt(this.configElements.conversationRounds.value) || 1,
