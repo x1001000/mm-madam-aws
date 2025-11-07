@@ -5,6 +5,7 @@ FROM public.ecr.aws/lambda/python:3.13
 RUN microdnf update -y && microdnf install -y \
     tar \
     xz \
+    git \
     && microdnf clean all
 
 # Install Node.js 20 from NodeSource
