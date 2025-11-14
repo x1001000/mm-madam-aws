@@ -7,6 +7,9 @@ from typing import List, Optional, Dict, Any
 from google import genai
 from google.genai import types
 import csv
+# Increase CSV field size limit to handle large podcast transcripts
+import sys
+csv.field_size_limit(sys.maxsize)
 import json
 import glob
 import requests
@@ -197,12 +200,12 @@ def get_knowledge():
             mm_ai_folder = mm_ai_folders[0]
             podcast_data = []
 
-            # Find all transcript files (files without extension)
-            transcript_files = [f for f in glob.glob(f'{mm_ai_folder}/*')
-                              if os.path.isfile(f) and not os.path.splitext(f)[1]]
+            # Find all transcript files
+            transcript_files = [f for f in glob.glob(f'{mm_ai_folder}/*') if os.path.isfile(f)]
 
             for transcript_file in transcript_files:
                 filename = os.path.basename(transcript_file)
+                print(f"Processing transcript file: {filename}")
                 # Parse filename: YYMMDD_..._title
                 # ID is left of first underscore, title is right of last underscore
                 if '_' in filename:
