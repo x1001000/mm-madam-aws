@@ -362,14 +362,16 @@ def get_retrieval_from_charts_data_api(csv_file, user_prompt, knowledge, token_c
             d['data'][f'c:{_id}']['series'] = dict(zip(series_names, series))
             del d['data'][f'c:{_id}']['info']
             data.append(d['data'][f'c:{_id}'])
-        return json.dumps(data, ensure_ascii=False)
+        return json.dumps(data, ensure_ascii=False), ids
+    return None, []
 
 def get_retrieval(csv_file, user_prompt, knowledge, token_counter):
     if ids := get_most_relevant_ids(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
         data = knowledge[csv_file]
         # Filter data by matching ids
         filtered_data = [row for row in data if int(row.get('id', 0)) in ids]
-        return json.dumps(filtered_data, ensure_ascii=False)
+        return json.dumps(filtered_data, ensure_ascii=False), ids
+    return None, []
 
 def get_retrieval_from_google_search(user_prompt, token_counter):
     system_prompt = None
@@ -377,8 +379,10 @@ def get_retrieval_from_google_search(user_prompt, token_counter):
     response_schema = None
     tools = [types.Tool(google_search=types.GoogleSearch())]
     try:
-        response_text = generate_content(user_prompt, system_prompt, response_type, response_schema, tools, token_counter).text
-        return response_text
+        response = generate_content(user_prompt, system_prompt, response_type, response_schema, tools, token_counter)
+        response_text = response.text
+        web_search_queries = response.candidates[0].grounding_metadata.web_search_queries
+        return response_text, list(web_search_queries) if web_search_queries else []
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google search error: {e}")
 
@@ -456,16 +460,21 @@ def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_count
             with open('knowledge/' + csv_file.replace('_log', str(_id)).replace('csv', 'html')) as f:
                 html_content = ''.join(f.readlines())
             data.append({'id': _id, 'html': html_content})
-        return json.dumps(data, ensure_ascii=False)
+        return json.dumps(data, ensure_ascii=False), ids
+    return None, []
 
 def build_system_prompt(user_prompt_type, contents, config, knowledge, token_counter):
     """Build the system prompt based on user input and configuration"""
+    # Initialize tracking variables
+    web_search_queries = []
+    retrieval_ids = {}
+
     # Detect language
     user_prompt = contents[-1]
     user_language_code = get_user_language_code(user_prompt, token_counter)
     lang_id = LANG_IDS.get(user_language_code.lower(), 2)
     SUBDOMAIN = SUBDOMAINS[lang_id]
-    
+
     # Determine prompt type (1: financial, 2: customer service, 3: chart instruction)
     # user_prompt_type = get_user_prompt_type(contents, token_counter)
     
@@ -483,13 +492,17 @@ def build_system_prompt(user_prompt_type, contents, config, knowledge, token_cou
         
         # Add retrievals based on config
         if config.has_chart and config.is_paid_user:
-            if retrieval := get_retrieval_from_charts_data_api('chart_tc.csv', user_prompt, knowledge, token_counter):
+            retrieval, ids = get_retrieval_from_charts_data_api('chart_tc.csv', user_prompt, knowledge, token_counter)
+            if retrieval:
+                retrieval_ids['chart_tc'] = ids
                 system_prompt += '\n- MM圖表的相關資料，當中時間序列（series）包含前值及最新數據，務必引用，並將文字或數據超連結至：'
                 system_prompt += f'https://{SUBDOMAIN}.macromicro.me/charts/{{id}}/{{slug}}'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
         
         if config.has_quickie and config.is_paid_user:
-            if retrieval := get_retrieval('quickie.csv', user_prompt, knowledge, token_counter):
+            retrieval, ids = get_retrieval('quickie.csv', user_prompt, knowledge, token_counter)
+            if retrieval:
+                retrieval_ids['quickie'] = ids
                 system_prompt += '\n- MM短評的相關資料'
                 if SUBDOMAIN == 'en':
                     system_prompt += '，可引用，但切勿超連結'
@@ -498,32 +511,43 @@ def build_system_prompt(user_prompt_type, contents, config, knowledge, token_cou
                 system_prompt += f'\n```\n{retrieval}\n```\n'
         
         if config.has_blog and config.is_paid_user:
-            if retrieval := get_retrieval('post.csv', user_prompt, knowledge, token_counter):
+            retrieval, ids = get_retrieval('post.csv', user_prompt, knowledge, token_counter)
+            if retrieval:
+                retrieval_ids['post'] = ids
                 system_prompt += '\n- MM中文部落格的相關資料'
                 if SUBDOMAIN == 'en':
                     system_prompt += '，可引用，但切勿超連結'
                 else:
                     system_prompt += f'（hyperlink pattern: https://{SUBDOMAIN}.macromicro.me/blog/{{slug}}）'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
-            if retrieval := get_retrieval('post_en.csv', user_prompt, knowledge, token_counter):
+            retrieval, ids = get_retrieval('post_en.csv', user_prompt, knowledge, token_counter)
+            if retrieval:
+                retrieval_ids['post_en'] = ids
                 system_prompt += '\n- MM英文部落格的相關資料'
                 system_prompt += f'（hyperlink pattern: https://en.macromicro.me/blog/{{slug}}）'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
         
         if config.has_edm and config.is_paid_user:
-            if retrieval := get_retrieval('edm.csv', user_prompt, knowledge, token_counter):
+            retrieval, ids = get_retrieval('edm.csv', user_prompt, knowledge, token_counter)
+            if retrieval:
+                retrieval_ids['edm'] = ids
                 system_prompt += '\n- MM獨家報告的相關資料'
                 system_prompt += '，可引用，但切勿超連結'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
 
         if config.has_podcast and config.is_paid_user:
-            if retrieval := get_retrieval('podcast.csv', user_prompt, knowledge, token_counter):
+            retrieval, ids = get_retrieval('podcast.csv', user_prompt, knowledge, token_counter)
+            if retrieval:
+                retrieval_ids['podcast'] = ids
                 system_prompt += '\n- MM Podcast的相關資料'
                 system_prompt += '，可引用，但切勿超連結'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
         
         if config.has_google_search:
-            if retrieval := get_retrieval_from_google_search(user_prompt, token_counter):
+            result = get_retrieval_from_google_search(user_prompt, token_counter)
+            if result[0]:  # Check if retrieval text exists
+                retrieval, queries = result
+                web_search_queries.extend(queries)
                 system_prompt += '\n- 網路搜尋的相關資料'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
     else:
@@ -531,13 +555,15 @@ def build_system_prompt(user_prompt_type, contents, config, knowledge, token_cou
             lang_route = LANG_ROUTES[lang_id]
             system_prompt += f'\n- MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
             system_prompt += '\n- 切勿提供來信或來電的客服聯繫方式'
-            if retrieval := get_retrieval_from_help_center(f'hc/{lang_route}/_log.csv', user_prompt, knowledge, token_counter):
+            retrieval, ids = get_retrieval_from_help_center(f'hc/{lang_route}/_log.csv', user_prompt, knowledge, token_counter)
+            if retrieval:
+                retrieval_ids['help_center'] = ids
                 system_prompt += '\n- MM幫助中心的相關資料'
                 system_prompt += f'（hyperlink pattern: https://support.macromicro.me/hc/{lang_route}/articles/{{id}}）'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
         system_prompt += '\n- 若非網站客服相關問題，你會婉拒回答'
     
-    return system_prompt, SUBDOMAIN
+    return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -579,7 +605,12 @@ async def chat(request: ChatRequest):
         
         # Check if this is a chart instruction first
         user_prompt_type = '總經' if request.user_id == 123456789 else get_user_prompt_type(contents[-2:], token_counter)
-        
+
+        # Initialize variables that will be used in logging
+        user_language_code = None
+        web_search_queries = []
+        retrieval_ids = {}
+
         if '製圖' in user_prompt_type:
             # Chart instruction - get chart config from MCP and return directly
             chart_config = await get_chart_config_from_mcp(user_prompt)
@@ -588,9 +619,10 @@ async def chat(request: ChatRequest):
             else:
                 response_text = "無法生成圖表配置，請提供更具體的圖表需求"
             SUBDOMAIN = SUBDOMAINS[0]  # Default subdomain
+            user_language_code = "zh-TW"  # Default language code for chart instructions
         else:
             # Build system prompt using contents[-2:]
-            system_prompt, SUBDOMAIN = build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter)
+            system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids = build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter)
             global last_system_prompt
             last_system_prompt = system_prompt
             
@@ -677,6 +709,12 @@ async def chat(request: ChatRequest):
             "total_token_count": token_counter.total_token_count,
             "cost": token_counter.total_cost(),
             "models_used": config.quality_model,
+            "extras_json": json.dumps({
+                "user_language_code": user_language_code,
+                "user_prompt_type": user_prompt_type,
+                "retrieval_ids": retrieval_ids,
+                "web_search_queries": web_search_queries
+            }, ensure_ascii=False),
             "requested": round(request_time),
             "responded": round(response_time),
             "state": "ok"
