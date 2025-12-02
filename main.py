@@ -243,19 +243,17 @@ def get_knowledge():
                 print(f"Created podcast.csv with {len(podcast_data)} transcripts")
 
         # Local CSV files
-        local_csv_files = glob.glob('knowledge/hc/*/_log.csv')
-        local_csv_files.append('knowledge/chart_tc.csv')
+        local_csv_files = glob.glob('knowledge/hc/*/_log.csv') # to be remote and live update by Ken
         local_csv_files.append('/tmp/podcast.csv')
         
-        # Remote CSV files (only if API URL is available)
-        remote_csv_files = []
-        if KNOWLEDGE_CSV_API:
-            remote_csv_files = [
-                f'{KNOWLEDGE_CSV_API}/quickie.csv',
-                f'{KNOWLEDGE_CSV_API}/post.csv',
-                f'{KNOWLEDGE_CSV_API}/post_en.csv',
-                f'{KNOWLEDGE_CSV_API}/edm.csv',
-            ]
+        # Remote CSV files
+        remote_csv_files = [
+            f'{KNOWLEDGE_CSV_API}/chart_tc.csv',
+            f'{KNOWLEDGE_CSV_API}/quickie.csv',
+            f'{KNOWLEDGE_CSV_API}/post.csv',
+            f'{KNOWLEDGE_CSV_API}/post_en.csv',
+            f'{KNOWLEDGE_CSV_API}/edm.csv',
+        ]
         
         csv_files = local_csv_files + remote_csv_files
         
@@ -267,6 +265,7 @@ def get_knowledge():
                     lines = r.text.splitlines()
                     reader = csv.DictReader(lines)
                     data = list(reader)
+                    print(f"Loaded remote CSV file: {csv_file} with {len(data)} rows")
                 else:
                     with open(csv_file, 'r', encoding='utf-8') as f:
                         reader = csv.DictReader(f)
