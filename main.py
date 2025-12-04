@@ -29,7 +29,7 @@ from mcp.client.stdio import stdio_client
 
 from dotenv import load_dotenv
 load_dotenv()
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+# GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 SEARCH_API_KEY = os.getenv('SEARCH_API_KEY')
 SYSTEM_PROMPT_URL = os.getenv('SYSTEM_PROMPT_URL')
 KNOWLEDGE_CSV_API = os.getenv('KNOWLEDGE_CSV_API')
@@ -72,9 +72,11 @@ app.mount("/static", StaticFiles(directory="."), name="static")
 AFTER_DATE = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d')
 # manually update
 PRICING = {
-    'gemini-2.5-flash-lite-preview-06-17': {'input': 0.1, 'output': 0.4, 'thinking': 0.4, 'caching': 0.025},
-    'gemini-2.5-flash-preview-09-2025': {'input': 0.3, 'output': 2.5, 'thinking': 2.5, 'caching': 0.075},
-    'gemini-2.5-pro': {'input': 1.25, 'output': 10, 'thinking': 10, 'caching': 0.31},
+    'gemini-2.5-flash-lite': {'input': 0.1, 'output': 0.4, 'thinking': 0.4, 'caching': 0.01},
+    'gemini-2.5-flash': {'input': 0.3, 'output': 2.5, 'thinking': 2.5, 'caching': 0.03},
+    'gemini-2.5-flash-preview-09-2025': {'input': 0.3, 'output': 2.5, 'thinking': 2.5, 'caching': 0.03},
+    'gemini-2.5-pro': {'input': 1.25, 'output': 10, 'thinking': 10, 'caching': 0.125},
+    'gemini-3-pro-preview': {'input': 2, 'output': 12, 'thinking': 12, 'caching': 0.2},
 }
 DEFAULT_MODEL = 'gemini-2.5-flash-preview-09-2025'
 
@@ -181,10 +183,7 @@ class TokenCounter:
         # Legacy method for backward compatibility - returns total cost
         return self.total_cost()
 
-# Initialize client
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY environment variable is required")
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client()
 
 @lru_cache(maxsize=1)
 def get_knowledge():
@@ -306,19 +305,10 @@ def generate_content(contents, system_prompt, response_type, response_schema, to
             thinking_config=thinking_config,
         )
     )
+    print(f'{model} in {sys._getframe(1).f_code.co_name}')
     # pprint(response.usage_metadata)
     token_counter.accumulate(response.usage_metadata, model)
     return response
-
-def get_user_language_code(user_prompt, token_counter):
-    system_prompt = 'Given a user query, identify its language code'
-    response_type = 'application/json'
-    response_schema = str
-    tools = None
-    try:
-        return generate_content(user_prompt, system_prompt, response_type, response_schema, tools, token_counter).parsed
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Language detection error: {e}")
 
 def get_user_prompt_type(contents, token_counter):
     system_prompt = 'Classify user prompt：總經財經時事類、網站客服或其他類、製圖指令類'
@@ -331,6 +321,16 @@ def get_user_prompt_type(contents, token_counter):
         return response_parsed
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Type detection error: {e}")
+
+def get_user_language_code(user_prompt, token_counter):
+    system_prompt = 'Given a user query, identify its language code'
+    response_type = 'application/json'
+    response_schema = str
+    tools = None
+    try:
+        return generate_content(user_prompt, system_prompt, response_type, response_schema, tools, token_counter).parsed
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Language detection error: {e}")
 
 def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter):
     system_prompt = 'Given a user query, identify up to 5 of the most relevant IDs in the JSON below.\n'

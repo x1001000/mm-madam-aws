@@ -794,7 +794,9 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                                     of Quality Model:
                                     <select id="qualityModel" style="width: 120px; margin-left: 10px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px;">
                                         <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                                        <option value="gemini-2.5-flash-preview-09-2025">gemini-2.5-flash-preview-09-2025</option>
                                         <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                                        <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
                                     </select>
                                 </label>
                             </div>
