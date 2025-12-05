@@ -395,6 +395,7 @@ server_params = StdioServerParameters(
     ]
 )
 async def get_chart_config_from_mcp(user_prompt):
+    return '此功能暫未開放，敬請期待！'
     try:
         # Connect to MCP server
         async with stdio_client(server_params) as (read, write):
