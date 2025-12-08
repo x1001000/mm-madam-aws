@@ -20,6 +20,8 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from pprint import pprint
 import traceback
+import threading
+import httpx
 import markdown
 # Enable the tables extension
 md = markdown.Markdown(extensions=['tables', 'nl2br'])
@@ -145,8 +147,9 @@ user_conversation_histories = {}  # Store conversation history by user_id
 
 class TokenCounter:
     def __init__(self):
+        self._lock = threading.Lock()
         self.reset()
-    
+
     def reset(self):
         self.prompt_token_count = 0
         self.candidates_token_count = 0
@@ -155,26 +158,27 @@ class TokenCounter:
         self.tool_use_prompt_token_count = 0
         self.total_token_count = 0
         self.costs_by_model = {}
-    
+
     def accumulate(self, usage_metadata, model):
-        self.prompt_token_count += usage_metadata.prompt_token_count
-        self.candidates_token_count += usage_metadata.candidates_token_count
-        self.cached_content_token_count += usage_metadata.cached_content_token_count or 0
-        self.thoughts_token_count += usage_metadata.thoughts_token_count or 0
-        self.tool_use_prompt_token_count += usage_metadata.tool_use_prompt_token_count or 0
-        self.total_token_count += usage_metadata.total_token_count
-        
-        # Calculate cost for this specific model call
-        if model in PRICING:
-            call_cost = (
-                usage_metadata.prompt_token_count * PRICING[model]['input'] + 
-                usage_metadata.candidates_token_count * PRICING[model]['output'] + 
-                (usage_metadata.cached_content_token_count or 0) * PRICING[model]['caching'] + 
-                (usage_metadata.thoughts_token_count or 0) * PRICING[model]['thinking']) / 1e6
-            
-            if model not in self.costs_by_model:
-                self.costs_by_model[model] = 0
-            self.costs_by_model[model] += call_cost
+        with self._lock:
+            self.prompt_token_count += usage_metadata.prompt_token_count
+            self.candidates_token_count += usage_metadata.candidates_token_count
+            self.cached_content_token_count += usage_metadata.cached_content_token_count or 0
+            self.thoughts_token_count += usage_metadata.thoughts_token_count or 0
+            self.tool_use_prompt_token_count += usage_metadata.tool_use_prompt_token_count or 0
+            self.total_token_count += usage_metadata.total_token_count
+
+            # Calculate cost for this specific model call
+            if model in PRICING:
+                call_cost = (
+                    usage_metadata.prompt_token_count * PRICING[model]['input'] +
+                    usage_metadata.candidates_token_count * PRICING[model]['output'] +
+                    (usage_metadata.cached_content_token_count or 0) * PRICING[model]['caching'] +
+                    (usage_metadata.thoughts_token_count or 0) * PRICING[model]['thinking']) / 1e6
+
+                if model not in self.costs_by_model:
+                    self.costs_by_model[model] = 0
+                self.costs_by_model[model] += call_cost
     
     def total_cost(self):
         return round(sum(self.costs_by_model.values()), 3)
@@ -310,8 +314,27 @@ def generate_content(contents, system_prompt, response_type, response_schema, to
     token_counter.accumulate(response.usage_metadata, model)
     return response
 
+async def generate_content_async(contents, system_prompt, response_type, response_schema, tools, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_budget=0)):
+    try:
+        response = await client.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type=response_type,
+                response_schema=response_schema,
+                tools=tools,
+                thinking_config=thinking_config,
+            )
+        )
+        token_counter.accumulate(response.usage_metadata, model)
+        return response
+    except Exception as e:
+        print(f'[async] generate_content_async error: {e}')
+        raise
+
 def get_user_prompt_type(contents, token_counter):
-    system_prompt = 'Classify user prompt：總經財經時事類、網站客服或其他類、製圖指令類'
+    system_prompt = 'Classify user prompt：總經財經市場新聞時事相關問題、網站功能操作客服或其他問題、下製圖指令，並以一個詞回覆「總經」、「客服」、「製圖」三選一'
     response_type = 'application/json'
     response_schema = str
     tools = None
@@ -383,6 +406,92 @@ def get_retrieval_from_google_search(user_prompt, token_counter):
         web_search_queries = response.candidates[0].grounding_metadata.web_search_queries
         return response_text, list(web_search_queries) if web_search_queries else []
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Google search error: {e}")
+
+# Async versions of retrieval functions for parallel execution
+async def get_user_language_code_async(user_prompt, token_counter):
+    system_prompt = 'Given a user query, identify its language code'
+    response_type = 'application/json'
+    response_schema = str
+    tools = None
+    try:
+        response = await generate_content_async(user_prompt, system_prompt, response_type, response_schema, tools, token_counter)
+        print(f"[async] get_user_language_code_async got: {response.parsed}")
+        return response.parsed
+    except Exception as e:
+        print(f"[async] get_user_language_code_async error: {e}")
+        raise HTTPException(status_code=500, detail=f"Language detection error: {e}")
+
+async def get_most_relevant_ids_async(csv_df_json, user_prompt, knowledge, token_counter):
+    system_prompt = 'Given a user query, identify up to 5 of the most relevant IDs in the JSON below.\n'
+    system_prompt += knowledge.get(csv_df_json, '')
+    response_type = 'application/json'
+    response_schema = list[int]
+    tools = None
+    try:
+        response = await generate_content_async(user_prompt, system_prompt, response_type, response_schema, tools, token_counter)
+        return response.parsed
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ID retrieval error: {e}")
+
+async def get_retrieval_async(csv_file, user_prompt, knowledge, token_counter):
+    try:
+        ids = await get_most_relevant_ids_async(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter)
+        print(f"[async] get_retrieval_async({csv_file}) got ids: {ids}")
+        if ids:
+            data = knowledge[csv_file]
+            filtered_data = [row for row in data if int(row.get('id', 0)) in ids]
+            return json.dumps(filtered_data, ensure_ascii=False), ids
+        return None, []
+    except Exception as e:
+        print(f"[async] get_retrieval_async({csv_file}) error: {e}")
+        raise
+
+async def get_retrieval_from_charts_data_api_async(csv_file, user_prompt, knowledge, token_counter, http_client):
+    try:
+        ids = await get_most_relevant_ids_async(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter)
+        print(f"[async] get_retrieval_from_charts_data_api_async({csv_file}) got ids: {ids}")
+        if ids:
+            # Fetch all chart data in parallel using httpx
+            async def fetch_chart(chart_id):
+                r = await http_client.get(f'{CHARTS_DATA_API}/{chart_id}')
+                return r.json()
+
+            tasks = [fetch_chart(_id) for _id in ids]
+            results = await asyncio.gather(*tasks)
+
+            data = []
+            for _id, d in zip(ids, results):
+                d['data'][f'c:{_id}']['id'] = d['data'][f'c:{_id}']['info']['id']
+                d['data'][f'c:{_id}']['slug'] = d['data'][f'c:{_id}']['info']['slug']
+                d['data'][f'c:{_id}']['name_tc'] = d['data'][f'c:{_id}']['info']['name_tc']
+                d['data'][f'c:{_id}']['description_tc'] = d['data'][f'c:{_id}']['info']['description_tc']
+                series_names = [series_config['name_tc'] for series_config in d['data'][f'c:{_id}']['info']['chart_config']['seriesConfigs']]
+                series = d['data'][f'c:{_id}']['series']
+                for i in range(len(series)):
+                    series[i] = series[i][-2:]
+                d['data'][f'c:{_id}']['series'] = dict(zip(series_names, series))
+                del d['data'][f'c:{_id}']['info']
+                data.append(d['data'][f'c:{_id}'])
+            return json.dumps(data, ensure_ascii=False), ids
+        return None, []
+    except Exception as e:
+        print(f"[async] get_retrieval_from_charts_data_api_async({csv_file}) error: {e}")
+        raise
+
+async def get_retrieval_from_google_search_async(user_prompt, token_counter):
+    system_prompt = None
+    response_type = 'text/plain'
+    response_schema = None
+    tools = [types.Tool(google_search=types.GoogleSearch())]
+    try:
+        response = await generate_content_async(user_prompt, system_prompt, response_type, response_schema, tools, token_counter)
+        response_text = response.text
+        web_search_queries = response.candidates[0].grounding_metadata.web_search_queries
+        print(f"[async] get_retrieval_from_google_search_async got {len(response_text)} chars, queries: {web_search_queries}")
+        return response_text, list(web_search_queries) if web_search_queries else []
+    except Exception as e:
+        print(f"[async] get_retrieval_from_google_search_async error: {e}")
         raise HTTPException(status_code=500, detail=f"Google search error: {e}")
 
 server_params = StdioServerParameters(
@@ -463,94 +572,26 @@ def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_count
         return json.dumps(data, ensure_ascii=False), ids
     return None, []
 
-def build_system_prompt(user_prompt_type, contents, config, knowledge, token_counter):
-    """Build the system prompt based on user input and configuration"""
+async def build_system_prompt(user_prompt_type, contents, config, knowledge, token_counter):
+    """Build the system prompt based on user input and configuration (async version with parallel API calls)"""
     # Initialize tracking variables
     web_search_queries = []
     retrieval_ids = {}
-
-    # Detect language
     user_prompt = contents[-1]
-    user_language_code = get_user_language_code(user_prompt, token_counter)
-    lang_id = LANG_IDS.get(user_language_code.lower(), 2)
-    SUBDOMAIN = SUBDOMAINS[lang_id]
 
-    # Determine prompt type (1: financial, 2: customer service, 3: chart instruction)
-    # user_prompt_type = get_user_prompt_type(contents, token_counter)
-    
-    # Get base system prompt
-    system_prompt = requests.get(SYSTEM_PROMPT_URL).text
-    system_prompt += f'\n- SUBDOMAIN = "{SUBDOMAIN}"'
-    system_prompt += f'\n- You MUST respond in user language code: "{user_language_code}"'
-    # system_prompt += f'\n- You MUST NOT hyperlink to any edm(MM獨家報告){', quickie(MM短評), and Chinese blog(MM中文部落格)' if SUBDOMAIN == 'en' else ''}.\n'
-    system_prompt += '\n\n---\n'
+    # For non-financial queries, use the original sequential approach
+    if '總經' not in user_prompt_type:
+        # Detect language (single API call, no need for parallelization)
+        user_language_code = get_user_language_code(user_prompt, token_counter)
+        lang_id = LANG_IDS.get(user_language_code.lower(), 2)
+        SUBDOMAIN = SUBDOMAINS[lang_id]
 
-    if '總經' in user_prompt_type:
-        if not config.is_paid_user:
-            system_prompt += '\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結：'
-            system_prompt += f'https://{SUBDOMAIN}.macromicro.me/subscribe'
-        
-        # Add retrievals based on config
-        if config.has_chart and config.is_paid_user:
-            retrieval, ids = get_retrieval_from_charts_data_api('chart_tc.csv', user_prompt, knowledge, token_counter)
-            if retrieval:
-                retrieval_ids['chart_tc'] = ids
-                system_prompt += '\n- MM圖表的相關資料，當中時間序列（series）包含前值及最新數據，務必引用，並將文字或數據超連結至：'
-                system_prompt += f'https://{SUBDOMAIN}.macromicro.me/charts/{{id}}/{{slug}}'
-                system_prompt += f'\n```\n{retrieval}\n```\n'
-        
-        if config.has_quickie and config.is_paid_user:
-            retrieval, ids = get_retrieval('quickie.csv', user_prompt, knowledge, token_counter)
-            if retrieval:
-                retrieval_ids['quickie'] = ids
-                system_prompt += '\n- MM短評的相關資料'
-                if SUBDOMAIN == 'en':
-                    system_prompt += '，可引用，但切勿超連結'
-                else:
-                    system_prompt += f'（hyperlink pattern: https://{SUBDOMAIN}.macromicro.me/quickie?id={{id}}）'
-                system_prompt += f'\n```\n{retrieval}\n```\n'
-        
-        if config.has_blog and config.is_paid_user:
-            retrieval, ids = get_retrieval('post.csv', user_prompt, knowledge, token_counter)
-            if retrieval:
-                retrieval_ids['post'] = ids
-                system_prompt += '\n- MM中文部落格的相關資料'
-                if SUBDOMAIN == 'en':
-                    system_prompt += '，可引用，但切勿超連結'
-                else:
-                    system_prompt += f'（hyperlink pattern: https://{SUBDOMAIN}.macromicro.me/blog/{{slug}}）'
-                system_prompt += f'\n```\n{retrieval}\n```\n'
-            retrieval, ids = get_retrieval('post_en.csv', user_prompt, knowledge, token_counter)
-            if retrieval:
-                retrieval_ids['post_en'] = ids
-                system_prompt += '\n- MM英文部落格的相關資料'
-                system_prompt += f'（hyperlink pattern: https://en.macromicro.me/blog/{{slug}}）'
-                system_prompt += f'\n```\n{retrieval}\n```\n'
-        
-        if config.has_edm and config.is_paid_user:
-            retrieval, ids = get_retrieval('edm.csv', user_prompt, knowledge, token_counter)
-            if retrieval:
-                retrieval_ids['edm'] = ids
-                system_prompt += '\n- MM獨家報告的相關資料'
-                system_prompt += '，可引用，但切勿超連結'
-                system_prompt += f'\n```\n{retrieval}\n```\n'
+        # Get base system prompt
+        system_prompt = requests.get(SYSTEM_PROMPT_URL).text
+        system_prompt += f'\n- SUBDOMAIN = "{SUBDOMAIN}"'
+        system_prompt += f'\n- You MUST respond in user language code: "{user_language_code}"'
+        system_prompt += '\n\n---\n'
 
-        if config.has_podcast and config.is_paid_user:
-            retrieval, ids = get_retrieval('podcast.csv', user_prompt, knowledge, token_counter)
-            if retrieval:
-                retrieval_ids['podcast'] = ids
-                system_prompt += '\n- MM Podcast的相關資料'
-                system_prompt += '，可引用，但切勿超連結'
-                system_prompt += f'\n```\n{retrieval}\n```\n'
-        
-        if config.has_google_search:
-            result = get_retrieval_from_google_search(user_prompt, token_counter)
-            if result[0]:  # Check if retrieval text exists
-                retrieval, queries = result
-                web_search_queries.extend(queries)
-                system_prompt += '\n- 網路搜尋的相關資料'
-                system_prompt += f'\n```\n{retrieval}\n```\n'
-    else:
         if config.has_hc:
             lang_route = LANG_ROUTES[lang_id]
             system_prompt += f'\n- MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
@@ -562,7 +603,138 @@ def build_system_prompt(user_prompt_type, contents, config, knowledge, token_cou
                 system_prompt += f'（hyperlink pattern: https://support.macromicro.me/hc/{lang_route}/articles/{{id}}）'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
         system_prompt += '\n- 若非網站客服相關問題，你會婉拒回答'
-    
+
+        return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
+
+    # For financial queries, use parallel API calls
+    async with httpx.AsyncClient() as http_client:
+        # Build task dictionary based on config conditions
+        tasks = {}
+
+        # Always need language detection
+        tasks['language'] = get_user_language_code_async(user_prompt, token_counter)
+
+        # Add retrieval tasks based on config
+        if config.has_chart and config.is_paid_user:
+            tasks['chart'] = get_retrieval_from_charts_data_api_async('chart_tc.csv', user_prompt, knowledge, token_counter, http_client)
+
+        if config.has_quickie and config.is_paid_user:
+            tasks['quickie'] = get_retrieval_async('quickie.csv', user_prompt, knowledge, token_counter)
+
+        if config.has_blog and config.is_paid_user:
+            tasks['post'] = get_retrieval_async('post.csv', user_prompt, knowledge, token_counter)
+            tasks['post_en'] = get_retrieval_async('post_en.csv', user_prompt, knowledge, token_counter)
+
+        if config.has_edm and config.is_paid_user:
+            tasks['edm'] = get_retrieval_async('edm.csv', user_prompt, knowledge, token_counter)
+
+        if config.has_podcast and config.is_paid_user:
+            tasks['podcast'] = get_retrieval_async('podcast.csv', user_prompt, knowledge, token_counter)
+
+        if config.has_google_search:
+            tasks['google_search'] = get_retrieval_from_google_search_async(user_prompt, token_counter)
+
+        # Execute all tasks in parallel
+        task_keys = list(tasks.keys())
+        task_coroutines = list(tasks.values())
+        print(f"[async] Executing {len(task_keys)} tasks in parallel: {task_keys}")
+        results = await asyncio.gather(*task_coroutines, return_exceptions=True)
+
+        # Map results back to keys
+        results_dict = dict(zip(task_keys, results))
+
+        # Debug: print any exceptions
+        for key, result in results_dict.items():
+            if isinstance(result, Exception):
+                print(f"[async] Task '{key}' failed with error: {result}")
+
+    # Process language result
+    user_language_code = results_dict.get('language', 'en')
+    if isinstance(user_language_code, Exception):
+        print(f"Language detection error: {user_language_code}")
+        user_language_code = 'en'  # fallback
+    lang_id = LANG_IDS.get(user_language_code.lower(), 2)
+    SUBDOMAIN = SUBDOMAINS[lang_id]
+
+    # Get base system prompt
+    system_prompt = requests.get(SYSTEM_PROMPT_URL).text
+    system_prompt += f'\n- SUBDOMAIN = "{SUBDOMAIN}"'
+    system_prompt += f'\n- You MUST respond in user language code: "{user_language_code}"'
+    system_prompt += '\n\n---\n'
+
+    if not config.is_paid_user:
+        system_prompt += '\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結：'
+        system_prompt += f'https://{SUBDOMAIN}.macromicro.me/subscribe'
+
+    # Process chart retrieval
+    if 'chart' in results_dict and not isinstance(results_dict['chart'], Exception):
+        retrieval, ids = results_dict['chart']
+        if retrieval:
+            retrieval_ids['chart_tc'] = ids
+            system_prompt += '\n- MM圖表的相關資料，當中時間序列（series）包含前值及最新數據，務必引用，並將文字或數據超連結至：'
+            system_prompt += f'https://{SUBDOMAIN}.macromicro.me/charts/{{id}}/{{slug}}'
+            system_prompt += f'\n```\n{retrieval}\n```\n'
+
+    # Process quickie retrieval
+    if 'quickie' in results_dict and not isinstance(results_dict['quickie'], Exception):
+        retrieval, ids = results_dict['quickie']
+        if retrieval:
+            retrieval_ids['quickie'] = ids
+            system_prompt += '\n- MM短評的相關資料'
+            if SUBDOMAIN == 'en':
+                system_prompt += '，可引用，但切勿超連結'
+            else:
+                system_prompt += f'（hyperlink pattern: https://{SUBDOMAIN}.macromicro.me/quickie?id={{id}}）'
+            system_prompt += f'\n```\n{retrieval}\n```\n'
+
+    # Process post retrieval
+    if 'post' in results_dict and not isinstance(results_dict['post'], Exception):
+        retrieval, ids = results_dict['post']
+        if retrieval:
+            retrieval_ids['post'] = ids
+            system_prompt += '\n- MM中文部落格的相關資料'
+            if SUBDOMAIN == 'en':
+                system_prompt += '，可引用，但切勿超連結'
+            else:
+                system_prompt += f'（hyperlink pattern: https://{SUBDOMAIN}.macromicro.me/blog/{{slug}}）'
+            system_prompt += f'\n```\n{retrieval}\n```\n'
+
+    # Process post_en retrieval
+    if 'post_en' in results_dict and not isinstance(results_dict['post_en'], Exception):
+        retrieval, ids = results_dict['post_en']
+        if retrieval:
+            retrieval_ids['post_en'] = ids
+            system_prompt += '\n- MM英文部落格的相關資料'
+            system_prompt += f'（hyperlink pattern: https://en.macromicro.me/blog/{{slug}}）'
+            system_prompt += f'\n```\n{retrieval}\n```\n'
+
+    # Process edm retrieval
+    if 'edm' in results_dict and not isinstance(results_dict['edm'], Exception):
+        retrieval, ids = results_dict['edm']
+        if retrieval:
+            retrieval_ids['edm'] = ids
+            system_prompt += '\n- MM獨家報告的相關資料'
+            system_prompt += '，可引用，但切勿超連結'
+            system_prompt += f'\n```\n{retrieval}\n```\n'
+
+    # Process podcast retrieval
+    if 'podcast' in results_dict and not isinstance(results_dict['podcast'], Exception):
+        retrieval, ids = results_dict['podcast']
+        if retrieval:
+            retrieval_ids['podcast'] = ids
+            system_prompt += '\n- MM Podcast的相關資料'
+            system_prompt += '，可引用，但切勿超連結'
+            system_prompt += f'\n```\n{retrieval}\n```\n'
+
+    # Process google search retrieval
+    if 'google_search' in results_dict and not isinstance(results_dict['google_search'], Exception):
+        result = results_dict['google_search']
+        if result[0]:  # Check if retrieval text exists
+            retrieval, queries = result
+            web_search_queries.extend(queries)
+            system_prompt += '\n- 網路搜尋的相關資料'
+            system_prompt += f'\n```\n{retrieval}\n```\n'
+
     return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
 
 @app.post("/chat", response_model=ChatResponse)
@@ -622,7 +794,7 @@ async def chat(request: ChatRequest):
             user_language_code = "zh-TW"  # Default language code for chart instructions
         else:
             # Build system prompt using contents[-2:]
-            system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids = build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter)
+            system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter)
             global last_system_prompt
             last_system_prompt = system_prompt
             
