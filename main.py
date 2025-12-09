@@ -747,10 +747,41 @@ async def chat(request: ChatRequest):
     try:
         decoded = jwt.decode(request.jwt, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
         print(f"JWT decoded successfully: {decoded}")
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.InvalidTokenError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+        error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"
+        print(f"JWT error: {error_type}")
+        error_time = time.time()
+        error_message = "您的登入已過期，請重新整理頁面後再試。"
+        payload = {
+            "started": round(error_time),
+            "user_id": request.user_id,
+            "question": request.message,
+            "answer": error_message,
+            "prompt_token_count": 0,
+            "candidates_token_count": 0,
+            "cached_content_token_count": 0,
+            "thoughts_token_count": 0,
+            "tool_use_prompt_token_count": 0,
+            "total_token_count": 0,
+            "cost": 0,
+            "models_used": "",
+            "extras_json": json.dumps({"error": error_type}),
+            "requested": round(error_time),
+            "responded": round(error_time),
+            "state": "error"
+        }
+        requests.post(LOGGER, json=payload)
+        return ChatResponse(
+            response=error_message,
+            response_markdown=error_message,
+            cost=0,
+            token_usage={"prompt_tokens": 0, "completion_tokens": 0, "thinking_tokens": 0, "total_tokens": 0},
+            conversation_history=[],
+            response_seconds=0,
+            started=round(error_time),
+            requested=round(error_time),
+            responded=round(error_time)
+        )
 
     request_time = time.time()
     token_counter = TokenCounter()
