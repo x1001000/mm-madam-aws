@@ -23,6 +23,7 @@ import traceback
 import threading
 import httpx
 import markdown
+import jwt
 # Enable the tables extension
 md = markdown.Markdown(extensions=['tables', 'nl2br'])
 import asyncio
@@ -41,6 +42,7 @@ REMOTE_MCP_SERVER = os.getenv('REMOTE_MCP_SERVER')
 GITHUB_GIST_API = os.getenv('GITHUB_GIST_API')
 GITHUB_ACCESS_TOKEN = os.getenv('GITHUB_ACCESS_TOKEN')
 LOGGER = os.getenv('LOGGER')
+JWT_SECRET = os.getenv('JWT_SECRET')
 
 app = FastAPI(title="MM Madam API", version="1.0.0")
 
@@ -98,6 +100,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     user_id: int
     message: str
+    jwt: str
     conversation_history: Optional[List[ChatMessage]] = []
     config: Optional[Dict[str, Any]] = {}
     sub_level: Optional[str] = None
@@ -740,6 +743,15 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Main chat endpoint"""
+    # Verify JWT
+    try:
+        decoded = jwt.decode(request.jwt, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
+        print(f"JWT decoded successfully: {decoded}")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+
     request_time = time.time()
     token_counter = TokenCounter()
     

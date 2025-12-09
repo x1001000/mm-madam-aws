@@ -5,3 +5,4 @@ markdown
 mcp
 httpx
 git+https://github.com/x1001000/gdown
+pyjwt
