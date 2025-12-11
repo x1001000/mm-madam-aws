@@ -100,7 +100,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     user_id: int
     message: str
-    jwt: str
+    jwt: Optional[str] = None  # optional for mm-mcp (user_id 101001000)
     conversation_history: Optional[List[ChatMessage]] = []
     config: Optional[Dict[str, Any]] = {}
     sub_level: Optional[str] = None
@@ -743,10 +743,13 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Main chat endpoint"""
-    # Verify JWT
+    # Verify JWT (skip only for mm-mcp user_id 101001000)
     try:
-        decoded = jwt.decode(request.jwt, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
-        print(f"JWT decoded successfully: {decoded}")
+        if request.user_id != 101001000:
+            if not request.jwt:
+                raise jwt.InvalidTokenError("JWT token required")
+            decoded = jwt.decode(request.jwt, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
+            print(f"JWT decoded successfully: {decoded}")
     except jwt.InvalidTokenError as e:
         error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"
         print(f"JWT error: {error_type}")
@@ -819,7 +822,7 @@ async def chat(request: ChatRequest):
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
         
         # Check if this is a chart instruction first
-        user_prompt_type = '總經' if request.user_id == 123456789 else get_user_prompt_type(contents[-2:], token_counter)
+        user_prompt_type = get_user_prompt_type(contents[-2:], token_counter)
 
         # Initialize variables that will be used in logging
         user_language_code = None
