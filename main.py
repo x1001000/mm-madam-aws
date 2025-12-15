@@ -581,19 +581,19 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     web_search_queries = []
     retrieval_ids = {}
     user_prompt = contents[-1]
+    # Get base system prompt
+    system_prompt_parts = requests.get(SYSTEM_PROMPT_URL).text.split('\n\n')
 
     # For non-financial queries, use the original sequential approach
-    if '總經' not in user_prompt_type:
+    if '客服' in user_prompt_type:
         # Detect language (single API call, no need for parallelization)
         user_language_code = get_user_language_code(user_prompt, token_counter)
         lang_id = LANG_IDS.get(user_language_code.lower(), 2)
         SUBDOMAIN = SUBDOMAINS[lang_id]
 
-        # Get base system prompt
-        system_prompt = requests.get(SYSTEM_PROMPT_URL).text
+        system_prompt = system_prompt_parts[0]
         system_prompt += f'\n- SUBDOMAIN = "{SUBDOMAIN}"'
         system_prompt += f'\n- You MUST respond in user language code: "{user_language_code}"'
-        system_prompt += '\n\n---\n'
 
         if config.has_hc:
             lang_route = LANG_ROUTES[lang_id]
@@ -605,7 +605,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
                 system_prompt += '\n- MM幫助中心的相關資料'
                 system_prompt += f'（hyperlink pattern: https://support.macromicro.me/hc/{lang_route}/articles/{{id}}）'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
-        system_prompt += '\n- 若非網站客服相關問題，你會婉拒回答'
+        system_prompt += '\n- 若非網站功能操作客服相關問題，你會婉拒回答'
 
         return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
 
@@ -659,15 +659,16 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     lang_id = LANG_IDS.get(user_language_code.lower(), 2)
     SUBDOMAIN = SUBDOMAINS[lang_id]
 
-    # Get base system prompt
-    system_prompt = requests.get(SYSTEM_PROMPT_URL).text
+    system_prompt = system_prompt_parts[0]
     system_prompt += f'\n- SUBDOMAIN = "{SUBDOMAIN}"'
     system_prompt += f'\n- You MUST respond in user language code: "{user_language_code}"'
-    system_prompt += '\n\n---\n'
+    system_prompt += f'\n{system_prompt_parts[1]}'
 
     if not config.is_paid_user:
         system_prompt += '\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結：'
         system_prompt += f'https://{SUBDOMAIN}.macromicro.me/subscribe'
+    else:
+        system_prompt += f'\n{system_prompt_parts[2]}\n'
 
     # Process chart retrieval
     if 'chart' in results_dict and not isinstance(results_dict['chart'], Exception):
