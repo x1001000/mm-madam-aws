@@ -78,11 +78,11 @@ AFTER_DATE = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d')
 PRICING = {
     'gemini-2.5-flash-lite': {'input': 0.1, 'output': 0.4, 'thinking': 0.4, 'caching': 0.01},
     'gemini-2.5-flash': {'input': 0.3, 'output': 2.5, 'thinking': 2.5, 'caching': 0.03},
-    'gemini-2.5-flash-preview-09-2025': {'input': 0.3, 'output': 2.5, 'thinking': 2.5, 'caching': 0.03},
+    'gemini-3-flash-preview': {'input': 0.5, 'output': 3, 'thinking': 3, 'caching': 0.05},
     'gemini-2.5-pro': {'input': 1.25, 'output': 10, 'thinking': 10, 'caching': 0.125},
     'gemini-3-pro-preview': {'input': 2, 'output': 12, 'thinking': 12, 'caching': 0.2},
 }
-DEFAULT_MODEL = 'gemini-2.5-flash-preview-09-2025'
+DEFAULT_MODEL = 'gemini-3-flash-preview'
 
 # SITE_LANGUAGES = ['繁體中文', '简体中文', 'English']
 SUBDOMAINS = ['www', 'sc', 'en']
@@ -337,7 +337,7 @@ async def generate_content_async(contents, system_prompt, response_type, respons
         raise
 
 def get_user_prompt_type(contents, token_counter):
-    system_prompt = 'Classify user prompt：總經財經市場新聞時事相關問題、網站功能操作客服或其他問題、下製圖指令，並以一個詞回覆「總經」、「客服」、「製圖」三選一'
+    system_prompt = '用戶訊息分類：總經財經市場新聞時事相關問題、網站功能操作客服或其他問題、製圖請求，以「總經」、「客服」、「製圖」三選一回傳'
     response_type = 'application/json'
     response_schema = str
     tools = None
