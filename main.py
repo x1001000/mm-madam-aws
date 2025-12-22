@@ -21,14 +21,12 @@ from functools import lru_cache
 from pprint import pprint
 import traceback
 import threading
+import asyncio
 import httpx
-import markdown
 import jwt
+import markdown
 # Enable the tables extension
 md = markdown.Markdown(extensions=['tables', 'nl2br'])
-import asyncio
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -497,48 +495,8 @@ async def get_retrieval_from_google_search_async(user_prompt, token_counter):
         print(f"[async] get_retrieval_from_google_search_async error: {e}")
         raise HTTPException(status_code=500, detail=f"Google search error: {e}")
 
-server_params = StdioServerParameters(
-    command="npx", 
-    args=[
-        "mcp-remote",
-        REMOTE_MCP_SERVER,
-        "--transport",
-        "http-only"
-    ]
-)
 async def get_chart_config_from_mcp(user_prompt):
     return '此功能暫未開放，敬請期待！'
-    try:
-        # Connect to MCP server
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                # Initialize the session
-                await session.initialize()
-                
-                response = await client.aio.models.generate_content(
-                    model=DEFAULT_MODEL,
-                    contents=user_prompt,
-                    config=genai.types.GenerateContentConfig(
-                        temperature=0,
-                        tools=[session],  # uses the session, will automatically call the tool
-                        # Uncomment if you **don't** want the SDK to automatically call the tool
-                        # automatic_function_calling=genai.types.AutomaticFunctionCallingConfig(
-                        #     disable=True
-                        # ),
-                    ),
-                )
-                # chart_json = response.automatic_function_calling_history[2].parts[0].function_response.response.result.content[0].text
-                # pprint(response.model_dump())
-                function_response = response.model_dump()['automatic_function_calling_history'][-1]['parts'][0]['function_response']['response']
-                if function_response.get('result'):
-                    chart_json = function_response['result']['content'][0]['text']
-                    chart_json = json.dumps(json.loads(chart_json), indent='　', ensure_ascii=False)
-                    # print(chart_json)
-                    return chart_json
-    
-    except Exception as e:
-        print(f"MCP service error: {e}")
-        return ""
 
 def google_search_site(query):
     results = []

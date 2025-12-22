@@ -1,8 +1,9 @@
+python-dotenv
 google-genai
 fastapi
 mangum
-markdown
-mcp
+uvicorn
 httpx
-git+https://github.com/x1001000/gdown
 pyjwt
+markdown
+git+https://github.com/x1001000/gdown
