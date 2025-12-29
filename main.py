@@ -247,7 +247,7 @@ def get_knowledge():
                 print(f"Created podcast.csv with {len(podcast_data)} transcripts")
 
         # Local CSV files
-        local_csv_files = glob.glob('knowledge/hc/*/_log.csv') # to be remote and live update by Ken
+        local_csv_files = glob.glob('knowledge/*/*/_log.csv') # TBD: remote CSV files from KNOWLEDGE_CSV_API
         local_csv_files.append('/tmp/podcast.csv')
         
         # Remote CSV files
@@ -281,6 +281,10 @@ def get_knowledge():
                 
                 # Extract key: remove 'knowledge/', '/tmp/', or 'csv/' prefixes
                 csv_file_key = csv_file.split('knowledge/')[-1].split('/tmp/')[-1].split('csv/')[-1]
+                if '/' in csv_file_key:
+                    global cutoff
+                    cutoff, lang_route_csv = csv_file_key.split('/', maxsplit=1)
+                    csv_file_key = f'hc/{lang_route_csv}'
                 knowledge[csv_file_key] = data
                 
                 # Create first 2 columns JSON equivalent
@@ -527,7 +531,7 @@ def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_count
         # Create list of dictionaries instead of DataFrame
         data = []
         for _id in ids:
-            with open('knowledge/' + csv_file.replace('_log', str(_id)).replace('csv', 'html')) as f:
+            with open(f'knowledge/{cutoff}' + csv_file.replace('hc', '').replace('_log', str(_id)).replace('csv', 'html')) as f:
                 html_content = ''.join(f.readlines())
             data.append({'id': _id, 'html': html_content})
         return json.dumps(data, ensure_ascii=False), ids

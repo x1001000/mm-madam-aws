@@ -1,3 +1,4 @@
 .env
 aws-docker.sh
 todos
+.DS_Store
