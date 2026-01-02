@@ -321,7 +321,9 @@ def generate_content(contents, system_prompt, response_type, response_schema, to
 
 async def generate_content_async(contents, system_prompt, response_type, response_schema, tools, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_budget=0)):
     try:
-        response = await client.aio.models.generate_content(
+        # Create fresh client to avoid "Event loop is closed" error on subsequent requests
+        async_client = genai.Client()
+        response = await async_client.aio.models.generate_content(
             model=model,
             contents=contents,
             config=types.GenerateContentConfig(
@@ -614,10 +616,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
                 print(f"[async] Task '{key}' failed with error: {result}")
 
     # Process language result
-    user_language_code = results_dict.get('language', 'en')
-    if isinstance(user_language_code, Exception):
-        print(f"Language detection error: {user_language_code}")
-        user_language_code = 'en'  # fallback
+    user_language_code = results_dict.get('language')
     lang_id = LANG_IDS.get(user_language_code.lower(), 2)
     SUBDOMAIN = SUBDOMAINS[lang_id]
 
