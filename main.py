@@ -546,7 +546,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     retrieval_ids = {}
     user_prompt = contents[-1]
     # Get base system prompt
-    system_prompt_parts = requests.get(SYSTEM_PROMPT_URL).text.split('\n\n')
+    system_prompt, for_paid_user, for_free_user = requests.get(SYSTEM_PROMPT_URL).text.split('\n\n')
 
     # For non-financial queries, use the original sequential approach
     if '客服' in user_prompt_type:
@@ -555,7 +555,6 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         lang_id = LANG_IDS.get(user_language_code.lower(), 2)
         SUBDOMAIN = SUBDOMAINS[lang_id]
 
-        system_prompt = system_prompt_parts[0]
         system_prompt += f'\n- SUBDOMAIN = "{SUBDOMAIN}"'
         system_prompt += f'\n- You MUST respond in user language code: "{user_language_code}"'
 
@@ -598,7 +597,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         if config.has_podcast and config.is_paid_user:
             tasks['podcast'] = get_retrieval_async('podcast.csv', user_prompt, knowledge, token_counter)
 
-        if config.has_google_search:
+        if config.has_google_search and config.is_paid_user:
             tasks['google_search'] = get_retrieval_from_google_search_async(user_prompt, token_counter)
 
         # Execute all tasks in parallel
@@ -620,16 +619,13 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     lang_id = LANG_IDS.get(user_language_code.lower(), 2)
     SUBDOMAIN = SUBDOMAINS[lang_id]
 
-    system_prompt = system_prompt_parts[0]
     system_prompt += f'\n- SUBDOMAIN = "{SUBDOMAIN}"'
     system_prompt += f'\n- You MUST respond in user language code: "{user_language_code}"'
-    system_prompt += f'\n{system_prompt_parts[1]}'
 
-    if not config.is_paid_user:
-        system_prompt += '\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結：'
-        system_prompt += f'https://{SUBDOMAIN}.macromicro.me/subscribe'
+    if config.is_paid_user:
+        system_prompt += f'\n{for_paid_user}\n'
     else:
-        system_prompt += f'\n{system_prompt_parts[2]}\n'
+        system_prompt += f'\n{for_free_user}\n'
 
     # Process chart retrieval
     if 'chart' in results_dict and not isinstance(results_dict['chart'], Exception):
