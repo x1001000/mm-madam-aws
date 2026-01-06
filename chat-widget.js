@@ -787,10 +787,14 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                                     <input type="number" id="conversationRounds" value="2" min="1" max="10" step="1" style="width: 60px; margin-left: 10px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px;">
                                 </label>
                             </div>
-                            <div class="mm-config-item">
-                                <label>
+                            <div class="mm-config-item" style="display: flex; align-items: center;">
+                                <label style="display: flex; align-items: center;">
                                     🎯 最多相關資料筆數:
                                     <input type="number" id="nMostRelevant" value="5" min="1" max="20" step="1" style="width: 60px; margin-left: 10px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                </label>
+                                <label style="display: flex; align-items: center; margin-left: 20px;">
+                                    📈 排除單一數列圖表
+                                    <input type="checkbox" id="noSingleSeries" style="margin-left: 5px;">
                                 </label>
                             </div>
                             <div class="mm-config-item">
@@ -885,6 +889,7 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 hasGoogleSearch: document.getElementById('hasGoogleSearch'),
                 conversationRounds: document.getElementById('conversationRounds'),
                 nMostRelevant: document.getElementById('nMostRelevant'),
+                noSingleSeries: document.getElementById('noSingleSeries'),
                 thinkingBudget: document.getElementById('thinkingBudget'),
                 qualityModel: document.getElementById('qualityModel')
             };
@@ -1173,6 +1178,7 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 has_google_search: this.configElements.hasGoogleSearch.checked,
                 conversation_rounds: parseInt(this.configElements.conversationRounds.value) || 1,
                 N_most_relevant: parseInt(this.configElements.nMostRelevant.value) || 5,
+                no_single_series: this.configElements.noSingleSeries.checked,
                 thinking_budget: this.configElements.thinkingBudget.value !== '' ? parseInt(this.configElements.thinkingBudget.value) : 500,
                 quality_model: this.configElements.qualityModel.value || 'gemini-3-flash-preview'
             };

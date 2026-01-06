@@ -128,6 +128,7 @@ class ConfigModel(BaseModel):
     thinking_budget: int = 500
     quality_model: str = DEFAULT_MODEL
     N_most_relevant: int = 5
+    no_single_series: bool = False
 
 class SearchRequest(BaseModel):
     query: str
@@ -414,7 +415,7 @@ async def get_retrieval_async(csv_file, user_prompt, knowledge, token_counter, N
         print(f"[async] get_retrieval_async({csv_file}) error: {e}")
         raise
 
-async def get_retrieval_from_charts_data_api_async(csv_file, user_prompt, knowledge, token_counter, http_client, N_most_relevant):
+async def get_retrieval_from_charts_data_api_async(csv_file, user_prompt, knowledge, token_counter, http_client, N_most_relevant, no_single_series):
     try:
         ids = await get_most_relevant_ids_async(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter, N_most_relevant)
         print(f"[async] get_retrieval_from_charts_data_api_async({csv_file}) got ids: {ids}")
@@ -434,6 +435,8 @@ async def get_retrieval_from_charts_data_api_async(csv_file, user_prompt, knowle
                 d['data'][f'c:{_id}']['name_tc'] = d['data'][f'c:{_id}']['info']['name_tc']
                 d['data'][f'c:{_id}']['description_tc'] = d['data'][f'c:{_id}']['info']['description_tc']
                 series_names = [series_config['name_tc'] for series_config in d['data'][f'c:{_id}']['info']['chart_config']['seriesConfigs']]
+                if no_single_series and len(series_names) == 1:
+                    continue
                 series = d['data'][f'c:{_id}']['series']
                 for i in range(len(series)):
                     series[i] = series[i][-2:]
@@ -509,6 +512,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     
     user_prompt = contents[-1]
     N_most_relevant = config.N_most_relevant
+    no_single_series = config.no_single_series
 
     # Get base system prompt
     system_prompt, for_paid_user, for_free_user = requests.get(SYSTEM_PROMPT_URL).text.split('\n\n')[:3]
@@ -547,7 +551,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 
         # Add retrieval tasks based on config
         if config.has_chart and config.is_paid_user:
-            tasks['chart'] = get_retrieval_from_charts_data_api_async('chart_tc.csv', user_prompt, knowledge, token_counter, http_client, N_most_relevant)
+            tasks['chart'] = get_retrieval_from_charts_data_api_async('chart_tc.csv', user_prompt, knowledge, token_counter, http_client, N_most_relevant, no_single_series)
 
         if config.has_quickie and config.is_paid_user:
             tasks['quickie'] = get_retrieval_async('quickie.csv', user_prompt, knowledge, token_counter, N_most_relevant)
