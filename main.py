@@ -122,11 +122,12 @@ class ConfigModel(BaseModel):
     has_blog: bool = True
     has_edm: bool = True
     has_podcast: bool = True
-    has_hc: bool = True
     has_google_search: bool = True
+    has_help_center: bool = True
     conversation_rounds: int = 2
     thinking_budget: int = 500
     quality_model: str = DEFAULT_MODEL
+    N_most_relevant: int = 5
 
 class SearchRequest(BaseModel):
     query: str
@@ -362,8 +363,8 @@ def get_user_language_code(user_prompt, token_counter):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Language detection error: {e}")
 
-def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter):
-    system_prompt = 'Given a user query, identify up to 5 of the most relevant IDs in the JSON below.\n'
+def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter, N_most_relevant):
+    system_prompt = f'Given a user query, identify up to {N_most_relevant} of the most relevant IDs in the JSON below.\n'
     system_prompt += knowledge.get(csv_df_json, '') # in case data filtered out AFTER_DATE
     response_type = 'application/json'
     response_schema = list[int]
@@ -373,47 +374,6 @@ def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter):
         return response_parsed
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ID retrieval error: {e}")
-
-def get_retrieval_from_charts_data_api(csv_file, user_prompt, knowledge, token_counter):
-    if ids := get_most_relevant_ids(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
-        data = []
-        for _id in ids:
-            r = requests.get(f'{CHARTS_DATA_API}/{_id}')
-            d = r.json()
-            d['data'][f'c:{_id}']['id'] = d['data'][f'c:{_id}']['info']['id']
-            d['data'][f'c:{_id}']['slug'] = d['data'][f'c:{_id}']['info']['slug']
-            d['data'][f'c:{_id}']['name_tc'] = d['data'][f'c:{_id}']['info']['name_tc']
-            d['data'][f'c:{_id}']['description_tc'] = d['data'][f'c:{_id}']['info']['description_tc']
-            series_names = [series_config['name_tc'] for series_config in d['data'][f'c:{_id}']['info']['chart_config']['seriesConfigs']]
-            series = d['data'][f'c:{_id}']['series']
-            for i in range(len(series)):
-                series[i] = series[i][-2:]
-            d['data'][f'c:{_id}']['series'] = dict(zip(series_names, series))
-            del d['data'][f'c:{_id}']['info']
-            data.append(d['data'][f'c:{_id}'])
-        return json.dumps(data, ensure_ascii=False), ids
-    return None, []
-
-def get_retrieval(csv_file, user_prompt, knowledge, token_counter):
-    if ids := get_most_relevant_ids(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
-        data = knowledge[csv_file]
-        # Filter data by matching ids
-        filtered_data = [row for row in data if int(row.get('id', 0)) in ids]
-        return json.dumps(filtered_data, ensure_ascii=False), ids
-    return None, []
-
-def get_retrieval_from_google_search(user_prompt, token_counter):
-    system_prompt = None
-    response_type = 'text/plain'
-    response_schema = None
-    tools = [types.Tool(google_search=types.GoogleSearch())]
-    try:
-        response = generate_content(user_prompt, system_prompt, response_type, response_schema, tools, token_counter)
-        response_text = response.text
-        web_search_queries = response.candidates[0].grounding_metadata.web_search_queries
-        return response_text, list(web_search_queries) if web_search_queries else []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Google search error: {e}")
 
 # Async versions of retrieval functions for parallel execution
 async def get_user_language_code_async(user_prompt, token_counter):
@@ -429,8 +389,8 @@ async def get_user_language_code_async(user_prompt, token_counter):
         print(f"[async] get_user_language_code_async error: {e}")
         raise HTTPException(status_code=500, detail=f"Language detection error: {e}")
 
-async def get_most_relevant_ids_async(csv_df_json, user_prompt, knowledge, token_counter):
-    system_prompt = 'Given a user query, identify up to 5 of the most relevant IDs in the JSON below.\n'
+async def get_most_relevant_ids_async(csv_df_json, user_prompt, knowledge, token_counter, N_most_relevant):
+    system_prompt = f'Given a user query, identify up to {N_most_relevant} of the most relevant IDs in the JSON below.\n'
     system_prompt += knowledge.get(csv_df_json, '')
     response_type = 'application/json'
     response_schema = list[int]
@@ -441,9 +401,9 @@ async def get_most_relevant_ids_async(csv_df_json, user_prompt, knowledge, token
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ID retrieval error: {e}")
 
-async def get_retrieval_async(csv_file, user_prompt, knowledge, token_counter):
+async def get_retrieval_async(csv_file, user_prompt, knowledge, token_counter, N_most_relevant):
     try:
-        ids = await get_most_relevant_ids_async(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter)
+        ids = await get_most_relevant_ids_async(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter, N_most_relevant)
         print(f"[async] get_retrieval_async({csv_file}) got ids: {ids}")
         if ids:
             data = knowledge[csv_file]
@@ -454,9 +414,9 @@ async def get_retrieval_async(csv_file, user_prompt, knowledge, token_counter):
         print(f"[async] get_retrieval_async({csv_file}) error: {e}")
         raise
 
-async def get_retrieval_from_charts_data_api_async(csv_file, user_prompt, knowledge, token_counter, http_client):
+async def get_retrieval_from_charts_data_api_async(csv_file, user_prompt, knowledge, token_counter, http_client, N_most_relevant):
     try:
-        ids = await get_most_relevant_ids_async(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter)
+        ids = await get_most_relevant_ids_async(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter, N_most_relevant)
         print(f"[async] get_retrieval_from_charts_data_api_async({csv_file}) got ids: {ids}")
         if ids:
             # Fetch all chart data in parallel using httpx
@@ -501,8 +461,17 @@ async def get_retrieval_from_google_search_async(user_prompt, token_counter):
         print(f"[async] get_retrieval_from_google_search_async error: {e}")
         raise HTTPException(status_code=500, detail=f"Google search error: {e}")
 
-async def get_chart_config_from_mcp(user_prompt):
-    return '此功能暫未開放，敬請期待！'
+def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_counter, N_most_relevant):
+    if ids := get_most_relevant_ids(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter, N_most_relevant):
+        # Create list of dictionaries instead of DataFrame
+        data = []
+        for _id in ids:
+            with open(f'knowledge/{cutoff}' + csv_file.replace('hc', '').replace('_log', str(_id)).replace('csv', 'html')) as f:
+                html_content = ''.join(f.readlines())
+            data.append({'id': _id, 'html': html_content})
+        return json.dumps(data, ensure_ascii=False), ids
+    return None, []
+
 
 def google_search_site(query):
     results = []
@@ -528,23 +497,19 @@ def google_search_site(query):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google site search error: {e}")
 
-def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_counter):
-    if ids := get_most_relevant_ids(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter):
-        # Create list of dictionaries instead of DataFrame
-        data = []
-        for _id in ids:
-            with open(f'knowledge/{cutoff}' + csv_file.replace('hc', '').replace('_log', str(_id)).replace('csv', 'html')) as f:
-                html_content = ''.join(f.readlines())
-            data.append({'id': _id, 'html': html_content})
-        return json.dumps(data, ensure_ascii=False), ids
-    return None, []
+async def get_chart_config_from_mcp(user_prompt):
+    return '此功能暫未開放，敬請期待！'
+
 
 async def build_system_prompt(user_prompt_type, contents, config, knowledge, token_counter):
     """Build the system prompt based on user input and configuration (async version with parallel API calls)"""
     # Initialize tracking variables
     web_search_queries = []
     retrieval_ids = {}
+    
     user_prompt = contents[-1]
+    N_most_relevant = config.N_most_relevant
+
     # Get base system prompt
     system_prompt, for_paid_user, for_free_user = requests.get(SYSTEM_PROMPT_URL).text.split('\n\n')[:3]
 
@@ -558,11 +523,11 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         system_prompt += f'\n- SUBDOMAIN = "{SUBDOMAIN}"'
         system_prompt += f'\n- You MUST respond in user language code: "{user_language_code}"'
 
-        if config.has_hc:
+        if config.has_help_center:
             lang_route = LANG_ROUTES[lang_id]
             system_prompt += f'\n- MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
             system_prompt += '\n- 切勿提供來信或來電的客服聯繫方式'
-            retrieval, ids = get_retrieval_from_help_center(f'hc/{lang_route}/_log.csv', user_prompt, knowledge, token_counter)
+            retrieval, ids = get_retrieval_from_help_center(f'hc/{lang_route}/_log.csv', user_prompt, knowledge, token_counter, N_most_relevant)
             if retrieval:
                 retrieval_ids['help_center'] = ids
                 system_prompt += '\n- MM幫助中心的相關資料'
@@ -582,20 +547,20 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 
         # Add retrieval tasks based on config
         if config.has_chart and config.is_paid_user:
-            tasks['chart'] = get_retrieval_from_charts_data_api_async('chart_tc.csv', user_prompt, knowledge, token_counter, http_client)
+            tasks['chart'] = get_retrieval_from_charts_data_api_async('chart_tc.csv', user_prompt, knowledge, token_counter, http_client, N_most_relevant)
 
         if config.has_quickie and config.is_paid_user:
-            tasks['quickie'] = get_retrieval_async('quickie.csv', user_prompt, knowledge, token_counter)
+            tasks['quickie'] = get_retrieval_async('quickie.csv', user_prompt, knowledge, token_counter, N_most_relevant)
 
         if config.has_blog and config.is_paid_user:
-            tasks['post'] = get_retrieval_async('post.csv', user_prompt, knowledge, token_counter)
-            tasks['post_en'] = get_retrieval_async('post_en.csv', user_prompt, knowledge, token_counter)
+            tasks['post'] = get_retrieval_async('post.csv', user_prompt, knowledge, token_counter, N_most_relevant)
+            tasks['post_en'] = get_retrieval_async('post_en.csv', user_prompt, knowledge, token_counter, N_most_relevant)
 
         if config.has_edm and config.is_paid_user:
-            tasks['edm'] = get_retrieval_async('edm.csv', user_prompt, knowledge, token_counter)
+            tasks['edm'] = get_retrieval_async('edm.csv', user_prompt, knowledge, token_counter, N_most_relevant)
 
         if config.has_podcast and config.is_paid_user:
-            tasks['podcast'] = get_retrieval_async('podcast.csv', user_prompt, knowledge, token_counter)
+            tasks['podcast'] = get_retrieval_async('podcast.csv', user_prompt, knowledge, token_counter, N_most_relevant)
 
         if config.has_google_search and config.is_paid_user:
             tasks['google_search'] = get_retrieval_from_google_search_async(user_prompt, token_counter)

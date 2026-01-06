@@ -771,20 +771,26 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                             </div>
                             <div class="mm-config-item">
                                 <label>
-                                    <input type="checkbox" id="hasHc" checked>
-                                    ❓ MM幫助中心
-                                </label>
-                            </div>
-                            <div class="mm-config-item">
-                                <label>
                                     <input type="checkbox" id="hasGoogleSearch" checked>
                                     🔍 Google搜尋
                                 </label>
                             </div>
                             <div class="mm-config-item">
                                 <label>
+                                    <input type="checkbox" id="hasHelpCenter" checked>
+                                    ❓ MM幫助中心
+                                </label>
+                            </div>
+                            <div class="mm-config-item">
+                                <label>
                                     💭 記得前幾輪對話:
                                     <input type="number" id="conversationRounds" value="2" min="1" max="10" step="1" style="width: 60px; margin-left: 10px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                </label>
+                            </div>
+                            <div class="mm-config-item">
+                                <label>
+                                    🎯 最多相關資料筆數:
+                                    <input type="number" id="nMostRelevant" value="5" min="1" max="20" step="1" style="width: 60px; margin-left: 10px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px;">
                                 </label>
                             </div>
                             <div class="mm-config-item">
@@ -875,9 +881,10 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 hasBlog: document.getElementById('hasBlog'),
                 hasEdm: document.getElementById('hasEdm'),
                 hasPodcast: document.getElementById('hasPodcast'),
-                hasHc: document.getElementById('hasHc'),
+                hasHelpCenter: document.getElementById('hasHelpCenter'),
                 hasGoogleSearch: document.getElementById('hasGoogleSearch'),
                 conversationRounds: document.getElementById('conversationRounds'),
+                nMostRelevant: document.getElementById('nMostRelevant'),
                 thinkingBudget: document.getElementById('thinkingBudget'),
                 qualityModel: document.getElementById('qualityModel')
             };
@@ -945,18 +952,18 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
 
         updateConfigDependencies() {
             const isPaid = this.configElements.isPaidUser.checked;
-            
+
             if (!isPaid) {
                 // Store current state before disabling
                 if (!this.savedFeatureStates) {
                     this.savedFeatureStates = {};
-                    ['hasChart', 'hasQuickie', 'hasBlog', 'hasEdm', 'hasPodcast'].forEach(key => {
+                    ['hasChart', 'hasQuickie', 'hasBlog', 'hasEdm', 'hasPodcast', 'hasGoogleSearch'].forEach(key => {
                         this.savedFeatureStates[key] = this.configElements[key].checked;
                     });
                 }
             }
 
-            ['hasChart', 'hasQuickie', 'hasBlog', 'hasEdm', 'hasPodcast'].forEach(key => {
+            ['hasChart', 'hasQuickie', 'hasBlog', 'hasEdm', 'hasPodcast', 'hasGoogleSearch'].forEach(key => {
                 this.configElements[key].disabled = !isPaid;
                 if (!isPaid) {
                     this.configElements[key].checked = false;
@@ -965,7 +972,7 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                     this.configElements[key].checked = this.savedFeatureStates[key];
                 }
             });
-            
+
             // Clear saved states after restoring
             if (isPaid && this.savedFeatureStates) {
                 this.savedFeatureStates = null;
@@ -1162,9 +1169,10 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 has_blog: this.configElements.hasBlog.checked,
                 has_edm: this.configElements.hasEdm.checked,
                 has_podcast: this.configElements.hasPodcast.checked,
-                has_hc: this.configElements.hasHc.checked,
+                has_help_center: this.configElements.hasHelpCenter.checked,
                 has_google_search: this.configElements.hasGoogleSearch.checked,
                 conversation_rounds: parseInt(this.configElements.conversationRounds.value) || 1,
+                N_most_relevant: parseInt(this.configElements.nMostRelevant.value) || 5,
                 thinking_budget: this.configElements.thinkingBudget.value !== '' ? parseInt(this.configElements.thinkingBudget.value) : 500,
                 quality_model: this.configElements.qualityModel.value || 'gemini-3-flash-preview'
             };
