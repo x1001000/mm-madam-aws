@@ -546,7 +546,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     retrieval_ids = {}
     user_prompt = contents[-1]
     # Get base system prompt
-    system_prompt, for_paid_user, for_free_user = requests.get(SYSTEM_PROMPT_URL).text.split('\n\n')
+    system_prompt, for_paid_user, for_free_user = requests.get(SYSTEM_PROMPT_URL).text.split('\n\n')[:3]
 
     # For non-financial queries, use the original sequential approach
     if '客服' in user_prompt_type:
