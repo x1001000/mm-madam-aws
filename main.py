@@ -103,6 +103,8 @@ class ChatRequest(BaseModel):
     config: Optional[Dict[str, Any]] = {}
     sub_level: Optional[str] = None
     response_type: Optional[str] = 'html'
+    current_page_text: Optional[str] = None  # text content of the page where chat bubble is used
+    current_page_url: Optional[str] = None  # URL of the page where chat bubble is used (for logging)
 
 class ChatResponse(BaseModel):
     response: str
@@ -768,6 +770,12 @@ async def chat(request: ChatRequest):
         else:
             # Build system prompt using contents[-2:]
             system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter)
+
+            # Add current page text to system prompt if provided
+            if request.current_page_text:
+                system_prompt += '\n- 用戶當前頁面內容：'
+                system_prompt += f'\n```\n{request.current_page_text}\n```\n'
+
             global last_system_prompt
             last_system_prompt = system_prompt
             
@@ -858,7 +866,8 @@ async def chat(request: ChatRequest):
                 "user_language_code": user_language_code,
                 "user_prompt_type": user_prompt_type,
                 "retrieval_ids": retrieval_ids,
-                "web_search_queries": web_search_queries
+                "web_search_queries": web_search_queries,
+                "current_page_url": request.current_page_url
             }, ensure_ascii=False),
             "requested": round(request_time),
             "responded": round(response_time),
