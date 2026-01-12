@@ -33,6 +33,7 @@ load_dotenv()
 # GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 SEARCH_API_KEY = os.getenv('SEARCH_API_KEY')
 SYSTEM_PROMPT_URL = os.getenv('SYSTEM_PROMPT_URL')
+MARKETING_PROMPT_URL = os.getenv('MARKETING_PROMPT_URL')
 KNOWLEDGE_CSV_API = os.getenv('KNOWLEDGE_CSV_API')
 CHARTS_DATA_API = os.getenv('CHARTS_DATA_API')
 PODCAST_FOLDER_URL = os.getenv('PODCAST_FOLDER_URL')
@@ -540,6 +541,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
                 system_prompt += f'（hyperlink pattern: https://support.macromicro.me/hc/{lang_route}/articles/{{id}}）'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
         system_prompt += '\n- 若非網站功能操作客服相關問題，你會婉拒回答'
+        system_prompt += '\n\n---\n' + requests.get(MARKETING_PROMPT_URL).text
 
         return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
 
