@@ -820,7 +820,7 @@ async def chat(request: ChatRequest):
             chart_url = match.group(2)
             chart_id = chart_url.split('/charts/')[-1].split('/')[0]
             preview_url = f'https://cdn.macromicro.me/files/charts/{chart_id[-3:].zfill(3)}/{chart_id}-{SUBDOMAIN}.png'.replace('www', 'tc')
-            return f'* [{title}]({chart_url})\n[![{title}]({preview_url})]({chart_url})\n'
+            return f'\n* [{title}]({chart_url})\n[![]({preview_url})]({chart_url})\n'
 
         response_text = re.sub(chart_hyperlink_pattern, insert_preview, response_text)
 
