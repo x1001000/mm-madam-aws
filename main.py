@@ -674,8 +674,9 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Main chat endpoint"""
-    # Verify JWT (skip only for mm-mcp user_id 101001000)
+    # Verify JWT
     try:
+        # skip mm-mcp-aws user_id 101001000
         if request.user_id != 101001000:
             if not request.jwt:
                 raise jwt.InvalidTokenError("JWT token required")
@@ -736,6 +737,9 @@ async def chat(request: ChatRequest):
         # print(request.sub_level)
         # pprint(request.config)
         config = ConfigModel(**request.config) if request.config else ConfigModel()
+        # skip mm-madam-aws jwt user_id '101001000' (Subject must be a string)
+        if decoded.get('sub') != '1001000' and decoded.get('role') != 'BIZ':
+            config.is_paid_user = False
         
         # Use stored conversation history if available, otherwise use request history
         conversation_history = user_conversation_histories[request.user_id] if user_conversation_histories[request.user_id] else request.conversation_history
