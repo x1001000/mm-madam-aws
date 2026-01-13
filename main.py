@@ -676,12 +676,16 @@ async def chat(request: ChatRequest):
     """Main chat endpoint"""
     # Verify JWT
     try:
-        # skip mm-mcp-aws user_id 101001000
+        config = ConfigModel(**request.config) if request.config else ConfigModel()
+        # if not mm-mcp-aws/server.py user_id 101001000
         if request.user_id != 101001000:
             if not request.jwt:
                 raise jwt.InvalidTokenError("JWT token required")
             decoded = jwt.decode(request.jwt, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
             print(f"JWT decoded successfully: {decoded}")
+            # if not mm-madam-aws/chat-widget.js jwt user_id '1001000' (Subject must be a string)
+            if decoded.get('sub') != '1001000' and decoded.get('role') != 'BIZ':
+                config.is_paid_user = False
     except jwt.InvalidTokenError as e:
         error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"
         print(f"JWT error: {error_type}")
@@ -732,15 +736,6 @@ async def chat(request: ChatRequest):
         user_conversation_histories[request.user_id] = []
     
     try:
-        # print()
-        # print(request.message)
-        # print(request.sub_level)
-        # pprint(request.config)
-        config = ConfigModel(**request.config) if request.config else ConfigModel()
-        # skip mm-madam-aws jwt user_id '101001000' (Subject must be a string)
-        if decoded.get('sub') != '1001000' and decoded.get('role') != 'BIZ':
-            config.is_paid_user = False
-        
         # Use stored conversation history if available, otherwise use request history
         conversation_history = user_conversation_histories[request.user_id] if user_conversation_histories[request.user_id] else request.conversation_history
         
