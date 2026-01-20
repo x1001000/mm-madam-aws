@@ -483,7 +483,7 @@ def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_count
         for _id in ids:
             with open(f'knowledge/{cutoff}' + csv_file.replace('hc', '').replace('_log', str(_id)).replace('csv', 'html')) as f:
                 html_content = ''.join(f.readlines())
-            data.append({'id': _id, 'html': html_content})
+            data.append({'id': _id, 'markdown': markdownify(html_content)})
         return json.dumps(data, ensure_ascii=False), ids
     return None, []
 
@@ -876,12 +876,12 @@ async def chat(request: ChatRequest):
             "cost": token_counter.total_cost(),
             "models_used": config.quality_model,
             "extras_json": json.dumps({
-                "user_language_code": user_language_code,
-                "user_prompt_type": user_prompt_type,
-                "retrieval_ids": retrieval_ids,
-                "web_search_queries": web_search_queries,
-                "current_page_url": request.current_page_url
-            }, ensure_ascii=False),
+                "語言": user_language_code,
+                "分類": user_prompt_type,
+                "檢索": retrieval_ids,
+                "搜尋": web_search_queries,
+                "位於": request.current_page_url
+            }, ensure_ascii=False, indent=2),
             "requested": round(request_time),
             "responded": round(response_time),
             "state": "ok"
