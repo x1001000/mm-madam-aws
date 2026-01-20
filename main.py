@@ -197,6 +197,13 @@ class TokenCounter:
 client = genai.Client()
 
 @lru_cache(maxsize=1)
+def get_base_system_prompt():
+    """Fetch and cache the base system prompt (only downloaded once per app lifecycle)"""
+    text = requests.get(SYSTEM_PROMPT_URL).text
+    parts = text.split('\n\n')[:3]
+    return parts[0], parts[1], parts[2]  # system_prompt, for_paid_user, for_free_user
+
+@lru_cache(maxsize=1)
 def get_knowledge():
     knowledge = {}
     try:
@@ -526,8 +533,8 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     N_most_relevant = config.N_most_relevant
     no_single_series = config.no_single_series
 
-    # Get base system prompt
-    system_prompt, for_paid_user, for_free_user = requests.get(SYSTEM_PROMPT_URL).text.split('\n\n')[:3]
+    # Get base system prompt (cached)
+    system_prompt, for_paid_user, for_free_user = get_base_system_prompt()
 
     # For non-financial queries, use the original sequential approach
     if '客服' in user_prompt_type:
