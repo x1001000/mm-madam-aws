@@ -264,15 +264,23 @@ def get_knowledge():
             f'{KNOWLEDGE_CSV_API}/post_en.csv',
             f'{KNOWLEDGE_CSV_API}/edm.csv',
         ]
-        
+
+        # Fetch all remote CSVs concurrently
+        async def fetch_remote_csvs(urls):
+            async with httpx.AsyncClient() as client:
+                tasks = [client.get(url) for url in urls]
+                return await asyncio.gather(*tasks)
+
+        responses = asyncio.run(fetch_remote_csvs(remote_csv_files))
+        remote_csv_data = {url: r.text for url, r in zip(remote_csv_files, responses)}
+
         csv_files = local_csv_files + remote_csv_files
-        
+
         for csv_file in csv_files:
             try:
                 # Read CSV data using native csv module
                 if csv_file.startswith('http'):
-                    r = requests.get(csv_file)
-                    lines = r.text.splitlines()
+                    lines = remote_csv_data[csv_file].splitlines()
                     reader = csv.DictReader(lines)
                     data = list(reader)
                     print(f"Loaded remote CSV file: {csv_file} with {len(data)} rows")
