@@ -109,7 +109,7 @@ class ChatRequest(BaseModel):
     current_page_url: Optional[str] = None  # URL of the page where chat bubble is used (for logging)
 
 class ChatResponse(BaseModel):
-    response: str
+    response_html: str
     response_markdown: str
     cost: float
     token_usage: Dict[str, int]
@@ -727,7 +727,7 @@ async def chat(request: ChatRequest):
         }
         requests.post(LOGGER, json=payload)
         return ChatResponse(
-            response=error_message,
+            response_html=error_message,
             response_markdown=error_message,
             cost=0,
             token_usage={"prompt_tokens": 0, "completion_tokens": 0, "thinking_tokens": 0, "total_tokens": 0},
@@ -903,7 +903,7 @@ async def chat(request: ChatRequest):
         response_html = response_html.replace('<a href=', '<a target="_blank" rel="noopener noreferrer" href=')
         
         return ChatResponse(
-            response=response_html if request.response_type == 'html' else response_text,
+            response_html=response_html if request.response_type == 'html' else '',
             response_markdown=response_text,
             cost=token_counter.total_cost(),
             token_usage={
