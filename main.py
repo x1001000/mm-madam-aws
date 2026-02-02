@@ -831,7 +831,7 @@ async def chat(request: ChatRequest):
         # Insert preview images under chart hyperlink items
         # Pattern matches: * [Title](url) or 1. [Title](url) or * Prefix：[Title](url) (bulleted or numbered list items)
         # Allows optional text (like MM圖表：) before the markdown link
-        chart_hyperlink_pattern = r'(?:\*|\d+\.)\s+[^\[]*\[(.+?)\]\((https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+)\)(?:\n|$)'
+        chart_hyperlink_pattern = r'(?:\*|\d+\.)\s+[^\[]*\[(.+?)\]\((https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+)\)\**(?:\n|$)'
 
         def insert_preview(match):
             title = match.group(1)
