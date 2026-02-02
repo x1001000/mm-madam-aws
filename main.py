@@ -60,6 +60,8 @@ origins = [
     "https://debug-cms.macromicro.me",
     "https://dev-cms.macromicro.me",
     "https://cms.macromicro.me",
+    "https://dev-madam-chat.macromicro.me",
+    "https://madam-chat.macromicro.me",
 ]
 app.add_middleware(
     CORSMiddleware,
