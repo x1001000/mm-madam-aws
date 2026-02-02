@@ -242,6 +242,9 @@ def get_knowledge():
                             with open(transcript_file, 'r', encoding='utf-8') as f:
                                 markdown_content = f.read()
 
+                            # Strip base64 image references to save tokens
+                            markdown_content = re.sub(r'^\[image\d+\]: <data:image[^\n]*\n?', '', markdown_content, flags=re.MULTILINE)
+
                             podcast_data.append({
                                 'id': yymmdd,
                                 'title': title,
