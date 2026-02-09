@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -693,16 +693,21 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, request_obj: Request):
     """Main chat endpoint"""
-    # Verify JWT
+    # Verify JWT: prefer Authorization header, fall back to body
     try:
         config = ConfigModel(**request.config) if request.config else ConfigModel()
         # if not mm-mcp-aws/server.py user_id 101001000
         if request.user_id != 101001000:
-            if not request.jwt:
+            authorization = request_obj.headers.get("authorization", "")
+            if authorization.startswith("Bearer "):
+                token = authorization[7:]
+            elif request.jwt:
+                token = request.jwt
+            else:
                 raise jwt.InvalidTokenError("JWT token required")
-            decoded = jwt.decode(request.jwt, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
+            decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
             print(f"JWT decoded successfully: {decoded}")
             # if not mm-madam-aws/chat-widget.js jwt user_id '1001000' (Subject must be a string)
             if decoded.get('sub') != '1001000' and decoded.get('role') != 'BIZ':

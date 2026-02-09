@@ -1453,11 +1453,11 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtYWNyb21pY3JvLm1lIiwiYXVkIjoibWFjcm9taWNyby5tZSIsInN1YiI6IjEwMDEwMDAiLCJpYXQiOjE3MzM3ODg4MDAsImV4cCI6MTg5MzQ1NjAwMH0.hJe-30wc3KwEJHluEVisjzOShB1Z8ZPobmW_mo1CgSE',
                     },
                     body: JSON.stringify({
                         user_id: this.getUserId(),
                         message: message,
-                        jwt: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtYWNyb21pY3JvLm1lIiwiYXVkIjoibWFjcm9taWNyby5tZSIsInN1YiI6IjEwMDEwMDAiLCJpYXQiOjE3MzM3ODg4MDAsImV4cCI6MTg5MzQ1NjAwMH0.hJe-30wc3KwEJHluEVisjzOShB1Z8ZPobmW_mo1CgSE',
                         conversation_history: this.conversationHistory.slice(0, -1),
                         config: configData,
                         sub_level: this.getGA4SubLevel()
@@ -1472,9 +1472,9 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 const data = await response.json();
 
                 this.hideTypingIndicator();
-                this.addMessage(data.response, 'assistant', data, data.response_markdown);
+                this.addMessage(data.response_html, 'assistant', data, data.response_markdown);
 
-                this.conversationHistory.push({ role: 'assistant', content: data.response });
+                this.conversationHistory.push({ role: 'assistant', content: data.response_html });
                 
             } catch (error) {
                 if (error.name === 'AbortError') {
