@@ -1,7 +1,6 @@
 python-dotenv
 google-genai
 fastapi
-mangum
 uvicorn
 httpx
 pyjwt

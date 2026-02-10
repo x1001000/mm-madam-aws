@@ -1,24 +1,19 @@
-# Use the official AWS Lambda Python runtime as a parent image
-FROM public.ecr.aws/lambda/python:3.13
+FROM public.ecr.aws/docker/library/python:3.13-slim
 
-# Copy requirements file
-COPY requirements.txt ${LAMBDA_TASK_ROOT}
+# Lambda Web Adapter for streaming support
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
+ENV PORT=8000
 
-# Install git for git-based pip dependencies
-RUN microdnf install -y git && microdnf clean all
+WORKDIR /app
 
-# Upgrade pip and install Python dependencies
-RUN pip install --upgrade pip
+COPY requirements.txt .
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy function code
-COPY main.py ${LAMBDA_TASK_ROOT}
+COPY main.py .
+COPY index.html .
+COPY chat-widget.js .
+COPY *.png .
+COPY knowledge/ ./knowledge/
 
-# Copy static files and knowledge data
-COPY index.html ${LAMBDA_TASK_ROOT}
-COPY chat-widget.js ${LAMBDA_TASK_ROOT}
-COPY *.png ${LAMBDA_TASK_ROOT}
-COPY knowledge/ ${LAMBDA_TASK_ROOT}/knowledge/
-
-# Set the CMD to your handler
-CMD ["main.handler"]
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

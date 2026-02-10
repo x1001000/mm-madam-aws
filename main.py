@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from google import genai
@@ -366,6 +366,24 @@ async def generate_content_async(contents, system_prompt, response_type, respons
         print(f'[async] generate_content_async error: {e}')
         raise
 
+async def generate_content_stream(contents, system_prompt, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_budget=0)):
+    async_client = genai.Client()
+    last_usage = None
+    async for chunk in await async_client.aio.models.generate_content_stream(
+        model=model, contents=contents,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type='text/plain',
+            thinking_config=thinking_config,
+        )
+    ):
+        if chunk.usage_metadata:
+            last_usage = chunk.usage_metadata
+        if chunk.text:
+            yield chunk.text
+    if last_usage:
+        token_counter.accumulate(last_usage, model)
+
 def get_user_prompt_type(contents, token_counter):
     system_prompt = '用戶訊息分類：總經財經市場新聞時事相關問題、網站功能操作客服或其他問題、製圖請求，以「總經」、「客服」、「製圖」三選一回傳'
     response_type = 'application/json'
@@ -692,6 +710,36 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 
     return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
 
+def post_process_response(response_text, subdomain):
+    """Post-process response text: URL subdomain fix, chart preview insertion, bold-before-list fix"""
+    # hard fix hallucination
+    if subdomain == 'en':
+        response_text = re.sub(r'https://(www|sc)\.macromicro', f'https://en.macromicro', response_text)
+
+    # Insert preview images under chart hyperlink items
+    chart_hyperlink_pattern = r'(?:\*|\d+\.)\s+[^\[]*\[(.+?)\]\((https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+)\)\**(?:\n|$)'
+
+    def insert_preview(match):
+        title = match.group(1)
+        chart_url = match.group(2)
+        chart_id = chart_url.split('/charts/')[-1].split('/')[0]
+        preview_url = f'https://cdn.macromicro.me/files/charts/{chart_id[-3:].zfill(3)}/{chart_id}-{subdomain}.png'.replace('www', 'tc')
+        return f'\n* [{title}]({chart_url})\n[![]({preview_url})]({chart_url})\n'
+
+    response_text = re.sub(chart_hyperlink_pattern, insert_preview, response_text)
+
+    # Fix markdown rendering bug: add extra newline between bold text and list items
+    response_text = re.sub(r'(\*\*.+?\*\*)\n([\*\-]|\d+\.)', r'\1\n\n\2', response_text)
+
+    return response_text
+
+def convert_to_html(response_text):
+    """Convert markdown response to HTML with responsive images and target=_blank links"""
+    response_html = md.convert(response_text)
+    response_html = response_html.replace('<img ', '<img style="max-width: 100%; height: auto;" ')
+    response_html = response_html.replace('<a href=', '<a target="_blank" rel="noopener noreferrer" href=')
+    return response_html
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, request_obj: Request):
     """Main chat endpoint"""
@@ -835,27 +883,7 @@ async def chat(request: ChatRequest, request_obj: Request):
         pprint(updated_conversation_history)
         print()
 
-        # hard fix hallucination
-        if SUBDOMAIN == 'en':
-            response_text = re.sub(r'https://(www|sc)\.macromicro', f'https://en.macromicro', response_text)
-
-        # Insert preview images under chart hyperlink items
-        # Pattern matches: * [Title](url) or 1. [Title](url) or * Prefix：[Title](url) (bulleted or numbered list items)
-        # Allows optional text (like MM圖表：) before the markdown link
-        chart_hyperlink_pattern = r'(?:\*|\d+\.)\s+[^\[]*\[(.+?)\]\((https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+)\)\**(?:\n|$)'
-
-        def insert_preview(match):
-            title = match.group(1)
-            chart_url = match.group(2)
-            chart_id = chart_url.split('/charts/')[-1].split('/')[0]
-            preview_url = f'https://cdn.macromicro.me/files/charts/{chart_id[-3:].zfill(3)}/{chart_id}-{SUBDOMAIN}.png'.replace('www', 'tc')
-            return f'\n* [{title}]({chart_url})\n[![]({preview_url})]({chart_url})\n'
-
-        response_text = re.sub(chart_hyperlink_pattern, insert_preview, response_text)
-
-        # Fix markdown rendering bug: add extra newline between bold text and list items
-        # Pattern matches: **bold text** followed by newline and list marker (* or - or 1.)
-        response_text = re.sub(r'(\*\*.+?\*\*)\n([\*\-]|\d+\.)', r'\1\n\n\2', response_text)
+        response_text = post_process_response(response_text, SUBDOMAIN)
 
         # Log chat to GitHub Gist
         if GITHUB_GIST_API and GITHUB_ACCESS_TOKEN:
@@ -906,13 +934,8 @@ async def chat(request: ChatRequest, request_obj: Request):
         }
         requests.post(LOGGER, json=payload)
         
-        # Convert markdown to HTML
-        response_html = md.convert(response_text)
-        # Make images responsive (fit width)
-        response_html = response_html.replace('<img ', '<img style="max-width: 100%; height: auto;" ')
-        # Make links open in new tab
-        response_html = response_html.replace('<a href=', '<a target="_blank" rel="noopener noreferrer" href=')
-        
+        response_html = convert_to_html(response_text)
+
         return ChatResponse(
             response_html=response_html if request.response_type == 'html' else '',
             response_markdown=response_text,
@@ -951,6 +974,174 @@ async def search(request: SearchRequest):
         traceback.print_exc()  # Print full stack trace
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/chat-stream")
+async def chat_stream(request: ChatRequest, request_obj: Request):
+    """Streaming chat endpoint using Server-Sent Events"""
+    # JWT validation (same logic as /chat)
+    try:
+        config = ConfigModel(**request.config) if request.config else ConfigModel()
+        if request.user_id != 101001000:
+            authorization = request_obj.headers.get("authorization", "")
+            if authorization.startswith("Bearer "):
+                token = authorization[7:]
+            elif request.jwt:
+                token = request.jwt
+            else:
+                raise jwt.InvalidTokenError("JWT token required")
+            decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
+            print(f"JWT decoded successfully: {decoded}")
+            request.user_id = int(decoded.get('sub'))
+            if request.user_id != 1001000 and decoded.get('role') != 'BIZ':
+                config.is_paid_user = False
+    except jwt.InvalidTokenError as e:
+        error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"
+        print(f"JWT error: {error_type}")
+        async def error_stream():
+            yield f'event: error\ndata: {json.dumps({"message": "您的登入已過期，請重新整理頁面後再試。"})}\n\n'
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    request_time = time.time()
+    token_counter = TokenCounter()
+
+    global user_sessions, user_conversation_histories
+    if request.user_id not in user_sessions:
+        user_sessions[request.user_id] = request_time
+    session_start_time = user_sessions[request.user_id]
+
+    if request.user_id not in user_conversation_histories:
+        user_conversation_histories[request.user_id] = []
+
+    async def event_stream():
+        try:
+            conversation_history = user_conversation_histories[request.user_id] if user_conversation_histories[request.user_id] else request.conversation_history
+
+            contents = []
+            for msg in conversation_history:
+                contents.append(types.Content(
+                    role="user" if msg.role == "user" else "model",
+                    parts=[types.Part.from_text(text=msg.content)]
+                ))
+
+            user_prompt = request.message
+            contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
+
+            user_prompt_type = get_user_prompt_type(contents[-2:], token_counter)
+
+            user_language_code = None
+            web_search_queries = []
+            retrieval_ids = {}
+
+            if '製圖' in user_prompt_type:
+                chart_config = await get_chart_config_from_mcp(user_prompt)
+                response_text = chart_config if chart_config else "無法生成圖表配置，請提供更具體的圖表需求"
+                SUBDOMAIN = SUBDOMAINS[0]
+                user_language_code = "zh-TW"
+                yield f'event: chunk\ndata: {json.dumps({"text": response_text})}\n\n'
+            else:
+                system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter)
+
+                if request.current_page_html:
+                    main_match = re.search(r'<main[^>]*>(.*?)</main>', request.current_page_html, re.DOTALL | re.IGNORECASE)
+                    html_content = main_match.group(1) if main_match else request.current_page_html
+                    system_prompt += '\n- 用戶當前頁面內容：'
+                    system_prompt += f'\n```\n{markdownify(html_content)}\n```\n'
+
+                global last_system_prompt
+                last_system_prompt = system_prompt
+
+                # Stream Gemini response
+                response_text = ""
+                async for chunk_text in generate_content_stream(contents, system_prompt, token_counter, model=config.quality_model, thinking_config=types.ThinkingConfig(thinking_budget=config.thinking_budget)):
+                    response_text += chunk_text
+                    yield f'event: chunk\ndata: {json.dumps({"text": chunk_text})}\n\n'
+
+            # Update conversation history
+            contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
+            contents = contents[-2 * config.conversation_rounds:]
+
+            updated_conversation_history = []
+            for content in contents:
+                updated_conversation_history.append(ChatMessage(
+                    role=content.role,
+                    content=content.parts[0].text
+                ))
+            user_conversation_histories[request.user_id] = updated_conversation_history
+
+            # Post-process
+            response_text = post_process_response(response_text, SUBDOMAIN)
+            response_html = convert_to_html(response_text)
+
+            # Log chat to GitHub Gist
+            if GITHUB_GIST_API and GITHUB_ACCESS_TOKEN:
+                try:
+                    headers = {
+                        "Accept": "application/vnd.github+json",
+                        "Authorization": f"Bearer {GITHUB_ACCESS_TOKEN}",
+                        "X-GitHub-Api-Version": "2022-11-28"
+                    }
+                    r = requests.get(GITHUB_GIST_API, headers=headers)
+                    if r.status_code == 200:
+                        chat_log = heading = '# MM AI 對話紀錄（由新到舊）\n---\n'
+                        chat_log += user_prompt + '\n---\n' + response_text + '\n\n---\n'
+                        chat_log += r.json()['files']['madam-log.md']['content'].strip(heading)
+                        chat_log = chat_log[:700000]
+                        payload = {'files': {'madam-log.md': {"content": chat_log}}}
+                        requests.patch(GITHUB_GIST_API, headers=headers, json=payload)
+                except Exception as e:
+                    print(f"Warning: Could not log to GitHub Gist: {e}")
+
+            response_time = time.time()
+            response_seconds = response_time - request_time
+
+            # Logger
+            payload = {
+                "started": round(session_start_time),
+                "user_id": request.user_id,
+                "question": user_prompt,
+                "answer": response_text,
+                "prompt_token_count": token_counter.prompt_token_count,
+                "candidates_token_count": token_counter.candidates_token_count,
+                "cached_content_token_count": token_counter.cached_content_token_count,
+                "thoughts_token_count": token_counter.thoughts_token_count,
+                "tool_use_prompt_token_count": token_counter.tool_use_prompt_token_count,
+                "total_token_count": token_counter.total_token_count,
+                "cost": token_counter.total_cost(),
+                "models_used": config.quality_model,
+                "extras_json": json.dumps({
+                    "語言": user_language_code,
+                    "分類": user_prompt_type,
+                    "檢索": retrieval_ids,
+                    "搜尋": web_search_queries,
+                    "位於": request.current_page_url
+                }, ensure_ascii=False, indent=2),
+                "requested": round(request_time),
+                "responded": round(response_time),
+                "state": "ok"
+            }
+            requests.post(LOGGER, json=payload)
+
+            # Send done event with final data
+            done_data = {
+                "response_html": response_html,
+                "response_markdown": response_text,
+                "token_usage": {
+                    "prompt_tokens": token_counter.prompt_token_count,
+                    "completion_tokens": token_counter.candidates_token_count,
+                    "thinking_tokens": token_counter.thoughts_token_count,
+                    "total_tokens": token_counter.total_token_count
+                },
+                "cost": token_counter.total_cost(),
+                "response_seconds": round(response_seconds, 2)
+            }
+            yield f'event: done\ndata: {json.dumps(done_data)}\n\n'
+
+        except Exception as e:
+            print(f"Chat stream error: {str(e)}")
+            traceback.print_exc()
+            yield f'event: error\ndata: {json.dumps({"message": str(e)})}\n\n'
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
 @app.post("/system-prompt", response_model=SystemPromptResponse)
 async def get_system_prompt(request: SystemPromptRequest):
     """Get the last system prompt used in content generation"""
@@ -979,9 +1170,6 @@ async def get_frontend_config():
     return {
         "MM_HIDE_CHAT_BUBBLE": os.getenv("MM_HIDE_CHAT_BUBBLE", "false")
     }
-
-from mangum import Mangum
-handler = Mangum(app, lifespan="off")
 
 if __name__ == "__main__":
     import uvicorn

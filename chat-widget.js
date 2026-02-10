@@ -809,8 +809,14 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                                     </select>
                                 </label>
                             </div>
+                            <div class="mm-config-item">
+                                <label>
+                                    <input type="checkbox" id="useStreaming" checked>
+                                    ⚡ 串流回應 (Streaming)
+                                </label>
+                            </div>
                         </div>
-                        
+
                         <div class="mm-chat-messages" id="mmChatMessages">
                         </div>
                         
@@ -891,7 +897,8 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 nMostRelevant: document.getElementById('nMostRelevant'),
                 noSingleSeries: document.getElementById('noSingleSeries'),
                 thinkingBudget: document.getElementById('thinkingBudget'),
-                qualityModel: document.getElementById('qualityModel')
+                qualityModel: document.getElementById('qualityModel'),
+                useStreaming: document.getElementById('useStreaming')
             };
             
             console.log('Config elements initialized:', this.configElements);
@@ -1367,6 +1374,8 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
 
             if (this.currentMode === 'search') {
                 await this.sendSearchRequest(message);
+            } else if (this.configElements.useStreaming && this.configElements.useStreaming.checked) {
+                await this.sendChatStreamRequest(message);
             } else {
                 await this.sendChatRequest(message);
             }
@@ -1479,6 +1488,177 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 } else {
                     console.error('Chat error:', error);
                     this.hideTypingIndicator();
+                    this.showError('Sorry, I encountered an error. Please try again.');
+                }
+            } finally {
+                this.isLoading = false;
+                this.sendBtn.disabled = false;
+                this.hideStopButton();
+                this.abortController = null;
+                this.input.focus();
+            }
+        }
+
+        simpleMarkdownToHtml(md) {
+            let html = md;
+            // Code blocks (``` ... ```)
+            html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+            // Inline code
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            // Images
+            html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img style="max-width: 100%; height: auto;" src="$2" alt="$1">');
+            // Links
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a target="_blank" rel="noopener noreferrer" href="$2">$1</a>');
+            // Headers
+            html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+            html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+            html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+            // Bold
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            // Italic
+            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            // Unordered lists
+            html = html.replace(/^\* (.+)$/gm, '<li>$1</li>');
+            html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+            // Ordered lists
+            html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+            // Line breaks (double newline → paragraph break)
+            html = html.replace(/\n\n/g, '<br><br>');
+            html = html.replace(/\n/g, '<br>');
+            return html;
+        }
+
+        async sendChatStreamRequest(message) {
+            this.addMessage(message, 'user');
+            this.input.value = '';
+            this.autoResizeTextarea();
+            this.updateSendButtonState();
+
+            this.conversationHistory.push({ role: 'user', content: message });
+            this.conversationHistory = this.conversationHistory.slice(-10);
+
+            this.isLoading = true;
+            this.sendBtn.disabled = true;
+            this.showStopButton();
+
+            // Create empty assistant message div immediately
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'mm-message assistant';
+            messageDiv.innerHTML = '<span class="mm-streaming-content"></span>';
+            this.messages.appendChild(messageDiv);
+            this.scrollToBottom();
+
+            const streamingContent = messageDiv.querySelector('.mm-streaming-content');
+            let accumulatedText = '';
+
+            this.abortController = new AbortController();
+
+            try {
+                const configData = this.getConfig();
+                const response = await fetch(`${this.apiUrl}/chat-stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtYWNyb21pY3JvLm1lIiwiYXVkIjoibWFjcm9taWNyby5tZSIsInN1YiI6IjEwMDEwMDAiLCJpYXQiOjE3MzM3ODg4MDAsImV4cCI6MTg5MzQ1NjAwMH0.hJe-30wc3KwEJHluEVisjzOShB1Z8ZPobmW_mo1CgSE',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        conversation_history: this.conversationHistory.slice(0, -1),
+                        config: configData,
+                        sub_level: this.getGA4SubLevel()
+                    }),
+                    signal: this.abortController.signal
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep incomplete line in buffer
+
+                    let eventType = '';
+                    for (const line of lines) {
+                        if (line.startsWith('event: ')) {
+                            eventType = line.slice(7).trim();
+                        } else if (line.startsWith('data: ')) {
+                            const dataStr = line.slice(6);
+                            try {
+                                const data = JSON.parse(dataStr);
+
+                                if (eventType === 'chunk') {
+                                    accumulatedText += data.text;
+                                    streamingContent.innerHTML = this.simpleMarkdownToHtml(accumulatedText);
+                                    this.scrollToBottom();
+                                } else if (eventType === 'done') {
+                                    // Replace with server-rendered HTML
+                                    messageDiv.innerHTML = data.response_html;
+
+                                    // Store markdown as data attribute
+                                    messageDiv.setAttribute('data-markdown', data.response_markdown);
+
+                                    // Add copy button
+                                    const copyButton = document.createElement('button');
+                                    copyButton.className = 'mm-copy-button';
+                                    copyButton.innerHTML = `
+                                        <svg viewBox="0 0 24 24" class="copy-icon">
+                                            <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                                        </svg>
+                                        <span class="copy-text">Copy</span>
+                                        <svg viewBox="0 0 24 24" class="check-icon" style="display: none;">
+                                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                                        </svg>
+                                    `;
+                                    copyButton.addEventListener('click', () => this.copyMarkdown(copyButton, messageDiv));
+                                    messageDiv.appendChild(copyButton);
+
+                                    // Add footnote
+                                    const footnoteDiv = document.createElement('div');
+                                    footnoteDiv.className = 'mm-message-footnote';
+                                    footnoteDiv.innerHTML = `
+                                        <div class="mm-token-info">
+                                            <span>${data.token_usage.prompt_tokens.toLocaleString()} input</span>
+                                            <span>${data.token_usage.completion_tokens.toLocaleString()} output</span>
+                                            ${data.token_usage.thinking_tokens > 0 ? `<span>${data.token_usage.thinking_tokens.toLocaleString()} thinking</span>` : ''}
+                                            <span>${data.token_usage.total_tokens.toLocaleString()} tokens</span>
+                                            <span>💰 $${data.cost ? data.cost.toFixed(3) : '0.000'}</span>
+                                        </div>
+                                        <div class="mm-time-info">⏱️ ${data.response_seconds ? data.response_seconds.toFixed(2) : '0.00'}s</div>
+                                    `;
+                                    messageDiv.appendChild(footnoteDiv);
+
+                                    this.conversationHistory.push({ role: 'assistant', content: data.response_html });
+                                    this.scrollToBottom();
+                                } else if (eventType === 'error') {
+                                    messageDiv.remove();
+                                    this.showError(data.message || 'An error occurred during streaming.');
+                                }
+                            } catch (parseErr) {
+                                // Ignore malformed JSON lines
+                            }
+                            eventType = '';
+                        }
+                    }
+                }
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    // Keep partial content visible, just stop streaming
+                    if (!accumulatedText) {
+                        messageDiv.remove();
+                    }
+                    this.conversationHistory.pop();
+                } else {
+                    console.error('Chat stream error:', error);
+                    messageDiv.remove();
                     this.showError('Sorry, I encountered an error. Please try again.');
                 }
             } finally {
