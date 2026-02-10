@@ -264,67 +264,70 @@ def get_knowledge():
                     writer.writerows(podcast_data)
                 print(f"Created podcast.csv with {len(podcast_data)} transcripts")
 
-        # Local CSV files
-        local_csv_files = glob.glob('knowledge/*/*/_log.csv') # TBD: remote CSV files from KNOWLEDGE_CSV_API
-        local_csv_files.append('/tmp/podcast.csv')
-        
-        # Remote CSV files
-        remote_csv_files = [
-            f'{KNOWLEDGE_CSV_API}/chart_tc.csv',
-            f'{KNOWLEDGE_CSV_API}/quickie.csv',
-            f'{KNOWLEDGE_CSV_API}/post.csv',
-            f'{KNOWLEDGE_CSV_API}/post_en.csv',
-            f'{KNOWLEDGE_CSV_API}/edm.csv',
-        ]
-
-        # Fetch all remote CSVs concurrently
-        async def fetch_remote_csvs(urls):
-            async with httpx.AsyncClient() as client:
-                tasks = [client.get(url) for url in urls]
-                return await asyncio.gather(*tasks)
-
-        responses = asyncio.run(fetch_remote_csvs(remote_csv_files))
-        remote_csv_data = {url: r.text for url, r in zip(remote_csv_files, responses)}
-
-        csv_files = local_csv_files + remote_csv_files
-
-        for csv_file in csv_files:
-            try:
-                # Read CSV data using native csv module
-                if csv_file.startswith('http'):
-                    lines = remote_csv_data[csv_file].splitlines()
-                    reader = csv.DictReader(lines)
-                    data = list(reader)
-                    print(f"Loaded remote CSV file: {csv_file} with {len(data)} rows")
-                else:
-                    with open(csv_file, 'r', encoding='utf-8') as f:
-                        reader = csv.DictReader(f)
-                        data = list(reader)
-                
-                # Filter by date if date column exists
-                if data and 'date' in data[0]:
-                    data = [row for row in data if row['date'] > AFTER_DATE]
-                
-                # Extract key: remove 'knowledge/', '/tmp/', or 'csv/' prefixes
-                csv_file_key = csv_file.split('knowledge/')[-1].split('/tmp/')[-1].split('csv/')[-1]
-                if '/' in csv_file_key:
-                    global cutoff
-                    cutoff, lang_route_csv = csv_file_key.split('/', maxsplit=1)
-                    csv_file_key = f'hc/{lang_route_csv}'
-                knowledge[csv_file_key] = data
-                
-                # Create first 2 columns JSON equivalent
-                if data:
-                    first_cols = list(data[0].keys())[:2]
-                    first_two_cols = [{col: row[col] for col in first_cols if col in row} for row in data]
-                    knowledge[csv_file_key + '=>df.iloc[:,:2].to_json'] = json.dumps(first_two_cols, ensure_ascii=False)
-            except Exception as e:
-                print(f"Warning: Could not load {csv_file}: {e}")
-                continue
-        print(f"Knowledge loaded successfully!\n{knowledge.keys()}")
     except Exception as e:
-        print(f"Error loading knowledge: {e}")
-        
+        print(f"Error loading podcasts: {e}")
+
+    # Local CSV files
+    local_csv_files = glob.glob('knowledge/*/*/_log.csv')
+    if os.path.exists('/tmp/podcast.csv'):
+        local_csv_files.append('/tmp/podcast.csv')
+
+    # Remote CSV files
+    remote_csv_files = [
+        f'{KNOWLEDGE_CSV_API}/chart_tc.csv',
+        f'{KNOWLEDGE_CSV_API}/quickie.csv',
+        f'{KNOWLEDGE_CSV_API}/post.csv',
+        f'{KNOWLEDGE_CSV_API}/post_en.csv',
+        f'{KNOWLEDGE_CSV_API}/edm.csv',
+    ]
+
+    # Fetch all remote CSVs synchronously (asyncio.run() fails inside Lambda's event loop)
+    remote_csv_data = {}
+    with httpx.Client() as client:
+        for url in remote_csv_files:
+            try:
+                r = client.get(url)
+                remote_csv_data[url] = r.text
+            except Exception as e:
+                print(f"Warning: Could not fetch {url}: {e}")
+
+    csv_files = local_csv_files + [url for url in remote_csv_files if url in remote_csv_data]
+
+    for csv_file in csv_files:
+        try:
+            # Read CSV data using native csv module
+            if csv_file.startswith('http'):
+                lines = remote_csv_data[csv_file].splitlines()
+                reader = csv.DictReader(lines)
+                data = list(reader)
+                print(f"Loaded remote CSV file: {csv_file} with {len(data)} rows")
+            else:
+                with open(csv_file, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    data = list(reader)
+
+            # Filter by date if date column exists
+            if data and 'date' in data[0]:
+                data = [row for row in data if row['date'] > AFTER_DATE]
+
+            # Extract key: remove 'knowledge/', '/tmp/', or 'csv/' prefixes
+            csv_file_key = csv_file.split('knowledge/')[-1].split('/tmp/')[-1].split('csv/')[-1]
+            if '/' in csv_file_key:
+                global cutoff
+                cutoff, lang_route_csv = csv_file_key.split('/', maxsplit=1)
+                csv_file_key = f'hc/{lang_route_csv}'
+            knowledge[csv_file_key] = data
+
+            # Create first 2 columns JSON equivalent
+            if data:
+                first_cols = list(data[0].keys())[:2]
+                first_two_cols = [{col: row[col] for col in first_cols if col in row} for row in data]
+                knowledge[csv_file_key + '=>df.iloc[:,:2].to_json'] = json.dumps(first_two_cols, ensure_ascii=False)
+        except Exception as e:
+            print(f"Warning: Could not load {csv_file}: {e}")
+            continue
+    print(f"Knowledge loaded successfully!\n{knowledge.keys()}")
+
     return knowledge
 knowledge = get_knowledge()
 
