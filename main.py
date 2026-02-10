@@ -100,9 +100,9 @@ class ChatMessage(BaseModel):
     content: str
 
 class ChatRequest(BaseModel):
-    user_id: int
+    user_id: Optional[int] = None  # backward compatible
     message: str
-    jwt: Optional[str] = None  # optional for mm-mcp (user_id 101001000)
+    jwt: Optional[str] = None  # optional for mm-mcp-aws
     conversation_history: Optional[List[ChatMessage]] = []
     config: Optional[Dict[str, Any]] = {}
     sub_level: Optional[str] = None
@@ -709,8 +709,9 @@ async def chat(request: ChatRequest, request_obj: Request):
                 raise jwt.InvalidTokenError("JWT token required")
             decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
             print(f"JWT decoded successfully: {decoded}")
+            request.user_id = int(decoded.get('sub'))
             # if not mm-madam-aws/chat-widget.js jwt user_id '1001000' (Subject must be a string)
-            if decoded.get('sub') != '1001000' and decoded.get('role') != 'BIZ':
+            if request.user_id != 1001000 and decoded.get('role') != 'BIZ':
                 config.is_paid_user = False
     except jwt.InvalidTokenError as e:
         error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"

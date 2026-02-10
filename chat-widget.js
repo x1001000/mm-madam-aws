@@ -1216,10 +1216,6 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
             }
         }
 
-        getUserId() {
-            return 1001000;
-        }
-
         addMessage(content, role = 'user', tokenData = null, markdown = null) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `mm-message ${role}`;
@@ -1456,7 +1452,6 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                         'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtYWNyb21pY3JvLm1lIiwiYXVkIjoibWFjcm9taWNyby5tZSIsInN1YiI6IjEwMDEwMDAiLCJpYXQiOjE3MzM3ODg4MDAsImV4cCI6MTg5MzQ1NjAwMH0.hJe-30wc3KwEJHluEVisjzOShB1Z8ZPobmW_mo1CgSE',
                     },
                     body: JSON.stringify({
-                        user_id: this.getUserId(),
                         message: message,
                         conversation_history: this.conversationHistory.slice(0, -1),
                         config: configData,
