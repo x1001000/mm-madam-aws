@@ -1,9 +1,0 @@
-python-dotenv
-google-genai
-fastapi
-uvicorn
-httpx
-pyjwt
-markdown
-markdownify
-git+https://github.com/x1001000/gdown
