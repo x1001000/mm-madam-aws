@@ -710,28 +710,6 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 
     return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
 
-def post_process_response(response_text, subdomain):
-    """Post-process response text: URL subdomain fix, chart preview insertion, bold-before-list fix"""
-    # hard fix hallucination
-    if subdomain == 'en':
-        response_text = re.sub(r'https://(www|sc)\.macromicro', f'https://en.macromicro', response_text)
-
-    # Insert preview images under chart hyperlink items
-    chart_hyperlink_pattern = r'(?:\*|\d+\.)\s+[^\[]*\[(.+?)\]\((https?://(?:[^/]+\.)?macromicro\.me/charts/[^\s)]+)\)\**(?:\n|$)'
-
-    def insert_preview(match):
-        title = match.group(1)
-        chart_url = match.group(2)
-        chart_id = chart_url.split('/charts/')[-1].split('/')[0]
-        preview_url = f'https://cdn.macromicro.me/files/charts/{chart_id[-3:].zfill(3)}/{chart_id}-{subdomain}.png'.replace('www', 'tc')
-        return f'\n* [{title}]({chart_url})\n[![]({preview_url})]({chart_url})\n'
-
-    response_text = re.sub(chart_hyperlink_pattern, insert_preview, response_text)
-
-    # Fix markdown rendering bug: add extra newline between bold text and list items
-    response_text = re.sub(r'(\*\*.+?\*\*)\n([\*\-]|\d+\.)', r'\1\n\n\2', response_text)
-
-    return response_text
 
 def convert_to_html(response_text):
     """Convert markdown response to HTML with responsive images and target=_blank links"""
@@ -882,8 +860,6 @@ async def chat(request: ChatRequest, request_obj: Request):
         print()
         pprint(updated_conversation_history)
         print()
-
-        response_text = post_process_response(response_text, SUBDOMAIN)
 
         # Log chat to GitHub Gist
         if GITHUB_GIST_API and GITHUB_ACCESS_TOKEN:
@@ -1067,10 +1043,6 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
                 ))
             user_conversation_histories[request.user_id] = updated_conversation_history
 
-            # Post-process
-            response_text = post_process_response(response_text, SUBDOMAIN)
-            response_html = convert_to_html(response_text)
-
             # Log chat to GitHub Gist
             if GITHUB_GIST_API and GITHUB_ACCESS_TOKEN:
                 try:
@@ -1122,7 +1094,6 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
 
             # Send done event with final data
             done_data = {
-                "response_html": response_html,
                 "response_markdown": response_text,
                 "token_usage": {
                     "prompt_tokens": token_counter.prompt_token_count,

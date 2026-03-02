@@ -1599,9 +1599,6 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                                     streamingContent.innerHTML = this.simpleMarkdownToHtml(accumulatedText);
                                     this.scrollToBottom();
                                 } else if (eventType === 'done') {
-                                    // Replace with server-rendered HTML
-                                    messageDiv.innerHTML = data.response_html;
-
                                     // Store markdown as data attribute
                                     messageDiv.setAttribute('data-markdown', data.response_markdown);
 
@@ -1635,7 +1632,7 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                                     `;
                                     messageDiv.appendChild(footnoteDiv);
 
-                                    this.conversationHistory.push({ role: 'assistant', content: data.response_html });
+                                    this.conversationHistory.push({ role: 'assistant', content: messageDiv.innerHTML });
                                     this.scrollToBottom();
                                 } else if (eventType === 'error') {
                                     messageDiv.remove();
