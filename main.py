@@ -78,11 +78,8 @@ app.mount("/static", StaticFiles(directory="."), name="static")
 AFTER_DATE = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d')
 # manually update
 PRICING = {
-    'gemini-2.5-flash-lite': {'input': 0.1, 'output': 0.4, 'thinking': 0.4, 'caching': 0.01},
-    'gemini-2.5-flash': {'input': 0.3, 'output': 2.5, 'thinking': 2.5, 'caching': 0.03},
     'gemini-3-flash-preview': {'input': 0.5, 'output': 3, 'thinking': 3, 'caching': 0.05},
-    'gemini-2.5-pro': {'input': 1.25, 'output': 10, 'thinking': 10, 'caching': 0.125},
-    'gemini-3-pro-preview': {'input': 2, 'output': 12, 'thinking': 12, 'caching': 0.2},
+    'gemini-3.1-pro-preview': {'input': 2, 'output': 12, 'thinking': 12, 'caching': 0.2},
 }
 DEFAULT_MODEL = 'gemini-3-flash-preview'
 
