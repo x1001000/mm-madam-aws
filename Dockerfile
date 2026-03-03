@@ -18,9 +18,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # Application code and static assets
 COPY main.py .
-COPY index.html .
-COPY chat-widget.js .
-COPY *.png .
+COPY test-frontend/ ./test-frontend/
 
 # Help center knowledge base: HTML articles and CSV indexes (sets the `cutoff` global in main.py)
 COPY knowledge/ ./knowledge/

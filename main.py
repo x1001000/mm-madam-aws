@@ -71,8 +71,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
-app.mount("/static", StaticFiles(directory="."), name="static")
+# Mount static files (test frontend only, guarded by ENABLE_FRONTEND)
+if os.getenv("ENABLE_FRONTEND", "false").lower() == "true":
+    app.mount("/static", StaticFiles(directory="test-frontend"), name="static")
 
 # automatically set to 20 days ago
 AFTER_DATE = (datetime.now() - timedelta(days=20)).strftime('%Y-%m-%d')
@@ -1128,7 +1129,9 @@ async def get_system_prompt(request: SystemPromptRequest):
 @app.get("/")
 async def serve_index():
     """Serve the main index.html page"""
-    return FileResponse("index.html")
+    if os.getenv("ENABLE_FRONTEND", "false").lower() != "true":
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse("test-frontend/index.html")
 
 @app.get("/health")
 async def health_check():
@@ -1138,6 +1141,8 @@ async def health_check():
 @app.get("/config")
 async def get_frontend_config():
     """Get frontend configuration from environment variables"""
+    if os.getenv("ENABLE_FRONTEND", "false").lower() != "true":
+        raise HTTPException(status_code=404, detail="Not found")
     return {
         "MM_HIDE_CHAT_BUBBLE": os.getenv("MM_HIDE_CHAT_BUBBLE", "false")
     }
