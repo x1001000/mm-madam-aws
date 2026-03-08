@@ -115,6 +115,16 @@ docker run -p 9000:8080 --env-file .env mm-madam
 
 ## API 端點說明
 
+### GET /health
+健康檢查端點，用於 AWS Lambda 監控。
+
+**Response:**
+```json
+{
+  "status": "healthy"
+}
+```
+
 ### POST /chat
 主要聊天端點，處理使用者訊息並回傳 AI 回應。
 
@@ -165,21 +175,8 @@ docker run -p 9000:8080 --env-file .env mm-madam
 }
 ```
 
-### GET /health
-健康檢查端點，用於 AWS Lambda 監控。
-
-**Response:**
-```json
-{
-  "status": "healthy"
-}
-```
-
 ### POST /chat-stream
 串流聊天端點，使用 Server-Sent Events（SSE）即時回傳 AI 回應。請求格式與 `/chat` 相同。
-
-### POST /system-prompt
-取得當前系統提示詞（除錯用途）。
 
 ### POST /search
 站內搜尋端點，使用 Google Custom Search API。
@@ -207,6 +204,9 @@ docker run -p 9000:8080 --env-file .env mm-madam
   "MM_HIDE_CHAT_BUBBLE": "false"
 }
 ```
+
+### POST /system-prompt
+取得當前系統提示詞（除錯用途）。
 
 ## 設定選項
 
