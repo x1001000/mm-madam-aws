@@ -62,6 +62,15 @@ flowchart TB
 | Mangum | Python | Lambda 與 FastAPI 的橋接器 |
 | Gemini | Google | 大型語言模型，用於 AI 生成與知識檢索 |
 
+### 回應模式
+
+系統支援兩種回應模式：
+
+| 端點 | 模式 | 說明 |
+|-----|------|------|
+| `POST /chat` | 同步 | 等待完整回應後一次回傳 |
+| `POST /chat-stream` | 串流（SSE） | 使用 Server-Sent Events 即時回傳，需 Lambda RESPONSE_STREAM 模式 |
+
 ---
 
 ## 聊天請求處理流程
@@ -92,16 +101,8 @@ flowchart TD
     BuildPrompt2 --> Generate
     Chart --> Generate
 
-    Generate --> PostProcess[後處理]
-
-    subgraph PostProcess[後處理流程]
-        FixURL[修正超連結]
-        InsertPreview[插入圖表預覽圖]
-        FixMarkdown[修正 Markdown 格式]
-        Convert[轉換為 HTML]
-    end
-
-    PostProcess --> Log[記錄日誌]
+    Generate --> Convert[Markdown 轉 HTML]
+    Convert --> Log[記錄日誌]
     Log --> Response([回傳回應])
 ```
 
@@ -124,10 +125,9 @@ flowchart TD
    - 根據系統提示詞與檢索結果生成回應
    - 支援 Thinking Budget 控制推理深度
 
-5. **後處理**
-   - 修正子網域超連結
-   - 插入圖表預覽圖片
+5. **格式轉換**
    - 轉換 Markdown 為 HTML
+   - 圖表預覽圖片由系統提示詞指示 AI 直接在回應中嵌入
 
 ---
 
@@ -199,6 +199,10 @@ flowchart LR
    - 所有檢索任務透過 `asyncio.gather()` 同時執行
    - 大幅減少等待時間
 
+4. **知識庫載入**
+   - CSV 知識庫資料於 Lambda 啟動時同步載入（使用 `httpx.Client`，相容 Lambda 事件迴圈）
+   - Podcast 資料透過 gdown 獨立下載，失敗不影響其他知識庫
+
 ### 知識庫資料結構
 
 | 知識庫 | 欄位 | 來源 |
@@ -216,7 +220,7 @@ flowchart LR
 ```mermaid
 flowchart TB
     subgraph Development["開發環境"]
-        Local["本地開發<br/>uvicorn"]
+        Local["本地開發<br/>uv run uvicorn"]
         Docker["Docker 容器"]
     end
 
@@ -312,7 +316,7 @@ sequenceDiagram
     L->>G: 生成回應（主模型）
     G-->>L: AI 回應
 
-    L->>L: 後處理（超連結、預覽圖）
+    L->>L: Markdown 轉 HTML
     L-->>W: ChatResponse
     W-->>U: 顯示回應
 ```
@@ -376,7 +380,7 @@ flowchart LR
 
 2. **快取機制**
    - 基礎系統提示詞使用 `@lru_cache` 快取
-   - 知識庫資料在 Lambda 啟動時載入並快取
+   - 知識庫資料在 Lambda 啟動時同步載入並快取（使用 httpx 同步客戶端，避免 Lambda 事件迴圈衝突）
 
 3. **HTTP 連線池**
    - 使用 `httpx.AsyncClient` 管理非同步 HTTP 請求

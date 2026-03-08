@@ -8,7 +8,8 @@ MM Madam 是一個基於 FastAPI 開發的 AI 聊天機器人 API，專為 Macro
 
 **核心技術：**
 - **後端框架：** FastAPI + Mangum（AWS Lambda 適配器）
-- **AI 模型：** Google Gemini（gemini-3-flash-preview / gemini-2.5-pro）
+- **AI 模型：** Google Gemini（gemini-3-flash-preview / gemini-3.1-pro-preview）
+- **套件管理：** uv
 - **部署環境：** AWS Lambda + Docker/ECR
 - **前端元件：** chat-widget.js（可嵌入式聊天視窗）
 
@@ -80,27 +81,27 @@ JWT_SECRET=your_jwt_secret
 # MCP Server（選用）
 REMOTE_MCP_SERVER=https://your-mcp-server
 
-# 前端設定
+# 前端設定（測試用，預設關閉）
+ENABLE_FRONTEND=false
 MM_HIDE_CHAT_BUBBLE=false
 ```
 
 ### 本地開發
 
 ```bash
-# 建立虛擬環境
-python -m venv .venv
-source .venv/bin/activate
-
-# 安裝依賴
-pip install -r requirements.txt
+# 安裝依賴（使用 uv）
+uv sync
 
 # 啟動開發伺服器
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# 啟用測試前端（選用）
+ENABLE_FRONTEND=true uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 開發伺服器啟動後，可透過以下方式存取：
 - API 文件：http://localhost:8000/docs
-- 測試頁面：http://localhost:8000
+- 測試頁面：http://localhost:8000（需設定 `ENABLE_FRONTEND=true`）
 
 ### Docker 部署
 
@@ -147,7 +148,7 @@ docker run -p 9000:8080 --env-file .env mm-madam
 **Response:**
 ```json
 {
-  "response": "<p>根據最新數據...</p>",
+  "response_html": "<p>根據最新數據...</p>",
   "response_markdown": "根據最新數據...",
   "cost": 0.023,
   "token_usage": {
@@ -174,6 +175,12 @@ docker run -p 9000:8080 --env-file .env mm-madam
 }
 ```
 
+### POST /chat-stream
+串流聊天端點，使用 Server-Sent Events（SSE）即時回傳 AI 回應。請求格式與 `/chat` 相同。
+
+### POST /system-prompt
+取得當前系統提示詞（除錯用途）。
+
 ### POST /search
 站內搜尋端點，使用 Google Custom Search API。
 
@@ -192,7 +199,7 @@ docker run -p 9000:8080 --env-file .env mm-madam
 ```
 
 ### GET /config
-取得前端設定（如是否隱藏聊天氣泡）。
+取得前端設定（如是否隱藏聊天氣泡）。需設定 `ENABLE_FRONTEND=true`。
 
 **Response:**
 ```json
@@ -225,11 +232,8 @@ docker run -p 9000:8080 --env-file .env mm-madam
 
 | 模型 | 輸入 ($/M) | 輸出 ($/M) | 思考 ($/M) | 快取 ($/M) |
 |-----|-----------|-----------|-----------|-----------|
-| gemini-2.5-flash-lite | 0.1 | 0.4 | 0.4 | 0.01 |
-| gemini-2.5-flash | 0.3 | 2.5 | 2.5 | 0.03 |
 | gemini-3-flash-preview | 0.5 | 3.0 | 3.0 | 0.05 |
-| gemini-2.5-pro | 1.25 | 10.0 | 10.0 | 0.125 |
-| gemini-3-pro-preview | 2.0 | 12.0 | 12.0 | 0.2 |
+| gemini-3.1-pro-preview | 2.0 | 12.0 | 12.0 | 0.2 |
 
 ## 部署方式
 
@@ -280,21 +284,26 @@ aws lambda update-function-configuration \
 ```
 mm-madam-aws/
 ├── main.py              # FastAPI 應用程式主檔案
-├── chat-widget.js       # 前端聊天視窗元件
-├── index.html           # 測試頁面
-├── requirements.txt     # Python 依賴
+├── pyproject.toml       # Python 依賴與專案設定（uv）
+├── uv.lock              # 依賴鎖定檔
+├── .python-version      # Python 版本
 ├── Dockerfile           # Docker 建置檔
 ├── aws-docker.sh        # AWS 部署腳本
+├── test-frontend/       # 測試前端（需 ENABLE_FRONTEND=true）
+│   ├── index.html       # 測試頁面
+│   ├── chat-widget.js   # 前端聊天視窗元件
+│   └── *.png            # 圖示資源
 ├── knowledge/           # Help Center 知識庫
 │   └── <date>/
 │       ├── zh-tw/       # 繁體中文文章
 │       ├── zh-cn/       # 簡體中文文章
 │       └── en-001/      # 英文文章
-├── *.png                # 圖示資源
 └── .env                 # 環境變數（不納入版控）
 ```
 
 ## 依賴套件
+
+依賴定義於 `pyproject.toml`，使用 [uv](https://docs.astral.sh/uv/) 管理。
 
 - `fastapi` - Web 框架
 - `mangum` - AWS Lambda 適配器
