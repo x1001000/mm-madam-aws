@@ -80,11 +80,13 @@ flowchart TD
     Start([使用者發送訊息]) --> JWT{JWT 驗證}
 
     JWT -->|驗證失敗| Error[回傳錯誤訊息]
-    JWT -->|驗證成功| CheckPaid{檢查付費狀態}
+    JWT -->|驗證成功| CheckPaid[依角色判斷付費狀態]
 
     CheckPaid --> Classify[訊息分類]
 
-    Classify --> Type{問題類型?}
+    Classify --> UsageCheck{用量檢查}
+    UsageCheck -->|超過限額| Block[回傳 HTTP 429]
+    UsageCheck -->|未超過| Type{問題類型?}
 
     Type -->|總經| Financial[財經問題處理]
     Type -->|客服| Support[客服問題處理]
@@ -110,7 +112,7 @@ flowchart TD
 
 1. **JWT 驗證**
    - 驗證使用者身份
-   - 判斷是否為付費用戶
+   - 依 JWT role 判斷付費狀態（FREE→免費用戶，BIZ*→付費，其他→付費）
    - 驗證失敗則回傳錯誤訊息
 
 2. **訊息分類**
@@ -121,7 +123,19 @@ flowchart TD
    - 財經問題：平行檢索多個知識庫
    - 客服問題：檢索 Help Center
 
-4. **回應生成**
+4. **用量檢查**
+   - 訊息分類後、知識檢索前，呼叫 Usage API 檢查用量
+   - 超過限額回傳 HTTP 429
+   - Usage API 異常時放行（fail open）
+   - MCP 請求（user_id 101001000）不受限
+
+   | 角色 | 客服 | 總經 |
+   |------|------|------|
+   | FREE | 5/天 | N/A |
+   | BIZ* | 無限 | 無限 |
+   | 其他付費 | 10/週 | 5/月 |
+
+5. **回應生成**
    - 根據系統提示詞與檢索結果生成回應
    - 支援 Thinking Budget 控制推理深度
 
@@ -356,8 +370,9 @@ flowchart LR
     Verify -->|否| Error["回傳錯誤"]
     Verify -->|是| CheckRole{檢查角色}
 
-    CheckRole -->|BIZ 或 1001000| Paid["付費用戶功能"]
-    CheckRole -->|其他| Free["免費用戶功能"]
+    CheckRole -->|FREE| Free["免費用戶功能"]
+    CheckRole -->|BIZ*| Biz["付費用戶（無限額）"]
+    CheckRole -->|其他| Paid["付費用戶（有限額）"]
 ```
 
 ### CORS 白名單

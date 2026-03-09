@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from google import genai
@@ -43,6 +43,13 @@ GITHUB_GIST_API = os.getenv('GITHUB_GIST_API')
 GITHUB_ACCESS_TOKEN = os.getenv('GITHUB_ACCESS_TOKEN')
 LOGGER = os.getenv('LOGGER')
 JWT_SECRET = os.getenv('JWT_SECRET')
+USAGE_API = os.getenv('USAGE_API')
+MCP_USER_ID = 101001000
+TAIPEI_OFFSET = 8
+USAGE_LIMITS = {
+    'FREE': {'客服': (5, 'daily')},
+    'PAID': {'客服': (10, 'weekly'), '總經': (5, 'monthly')},
+}
 
 app = FastAPI(title="MM Madam API", version="1.0.0")
 
@@ -100,10 +107,9 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     user_id: Optional[int] = None  # backward compatible
     message: str
-    jwt: Optional[str] = None  # optional for mm-mcp-aws
+    jwt: Optional[str] = None  # optional for mm-mcp-aws, mm-chatgpt-app
     conversation_history: Optional[List[ChatMessage]] = []
     config: Optional[Dict[str, Any]] = {}
-    sub_level: Optional[str] = None
     response_type: Optional[str] = 'html'
     current_page_html: Optional[str] = None  # text content of the page where chat bubble is used
     current_page_url: Optional[str] = None  # URL of the page where chat bubble is used (for logging)
@@ -719,14 +725,81 @@ def convert_to_html(response_text):
     response_html = response_html.replace('<a href=', '<a target="_blank" rel="noopener noreferrer" href=')
     return response_html
 
+def get_role_category(role):
+    """Classify user into 'BIZ', 'FREE', or 'PAID' based on JWT role."""
+    if role == 'FREE':
+        return 'FREE'
+    if role.startswith('BIZ'):
+        return 'BIZ'
+    return 'PAID'
+
+
+def get_usage_period(period):
+    """Compute (start_at, end_at) Unix timestamps in Taipei time for the given period."""
+    from datetime import timezone
+    now_utc = datetime.now(timezone.utc)
+    taipei_tz = timezone(timedelta(hours=TAIPEI_OFFSET))
+    now_taipei = now_utc.astimezone(taipei_tz)
+    end_at = int(now_taipei.timestamp())
+
+    if period == 'daily':
+        start = now_taipei.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == 'weekly':
+        days_since_monday = now_taipei.weekday()
+        start = (now_taipei - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == 'monthly':
+        start = now_taipei.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    else:
+        start = now_taipei.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    start_at = int(start.timestamp())
+    return start_at, end_at
+
+
+async def check_usage_limits(user_id, question_type, role_category):
+    """Check usage limits against the external usage API.
+    Returns None if OK, or a list of exceeded limits if over quota.
+    Fails open on API errors.
+    """
+    if role_category == 'BIZ':
+        return None
+
+    limits = USAGE_LIMITS.get(role_category, {})
+    limit_entry = limits.get(question_type)
+    if not limit_entry:
+        return None
+
+    max_count, period = limit_entry
+    start_at, end_at = get_usage_period(period)
+
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.post(USAGE_API, json={
+                'user_id': user_id,
+                'question_type': question_type,
+                'start_at': start_at,
+                'end_at': end_at,
+            })
+            resp.raise_for_status()
+            data = resp.json()
+            count = data.get('count', 0)
+            if count >= max_count:
+                return [{'question_type': question_type, 'usage': count, 'limit': max_count, 'period': period}]
+    except Exception as e:
+        print(f"Usage API error (failing open): {e}")
+        return None
+
+    return None
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, request_obj: Request):
     """Main chat endpoint"""
     # Verify JWT: prefer Authorization header, fall back to body
     try:
         config = ConfigModel(**request.config) if request.config else ConfigModel()
-        # if not mm-mcp-aws/server.py user_id 101001000
-        if request.user_id != 101001000:
+        user_role = ''
+        if request.user_id != MCP_USER_ID:
             authorization = request_obj.headers.get("authorization", "")
             if authorization.startswith("Bearer "):
                 token = authorization[7:]
@@ -737,8 +810,8 @@ async def chat(request: ChatRequest, request_obj: Request):
             decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
             print(f"JWT decoded successfully: {decoded}")
             request.user_id = int(decoded.get('sub'))
-            # if not mm-madam-aws/chat-widget.js jwt user_id '1001000' (Subject must be a string)
-            if request.user_id != 1001000 and decoded.get('role') != 'BIZ':
+            user_role = decoded.get('role', '')
+            if user_role == 'FREE':
                 config.is_paid_user = False
     except jwt.InvalidTokenError as e:
         error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"
@@ -807,6 +880,13 @@ async def chat(request: ChatRequest, request_obj: Request):
         
         # Check if this is a chart instruction first
         user_prompt_type = get_user_prompt_type(contents[-2:], token_counter)
+
+        # Check usage limits (MCP has no limits)
+        if request.user_id != MCP_USER_ID:
+            role_category = get_role_category(user_role)
+            exceeded = await check_usage_limits(request.user_id, user_prompt_type, role_category)
+            if exceeded:
+                return JSONResponse(status_code=429, content=exceeded)
 
         # Initialize variables that will be used in logging
         user_language_code = None
@@ -957,19 +1037,20 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
     # JWT validation (same logic as /chat)
     try:
         config = ConfigModel(**request.config) if request.config else ConfigModel()
-        if request.user_id != 101001000:
-            authorization = request_obj.headers.get("authorization", "")
-            if authorization.startswith("Bearer "):
-                token = authorization[7:]
-            elif request.jwt:
-                token = request.jwt
-            else:
-                raise jwt.InvalidTokenError("JWT token required")
-            decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
-            print(f"JWT decoded successfully: {decoded}")
-            request.user_id = int(decoded.get('sub'))
-            if request.user_id != 1001000 and decoded.get('role') != 'BIZ':
-                config.is_paid_user = False
+        user_role = ''
+        authorization = request_obj.headers.get("authorization", "")
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        elif request.jwt:
+            token = request.jwt
+        else:
+            raise jwt.InvalidTokenError("JWT token required")
+        decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
+        print(f"JWT decoded successfully: {decoded}")
+        request.user_id = int(decoded.get('sub'))
+        user_role = decoded.get('role', '')
+        if user_role == 'FREE':
+            config.is_paid_user = False
     except jwt.InvalidTokenError as e:
         error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"
         print(f"JWT error: {error_type}")
@@ -988,22 +1069,27 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
     if request.user_id not in user_conversation_histories:
         user_conversation_histories[request.user_id] = []
 
+    # Pre-build contents for usage check before starting the stream
+    conversation_history = user_conversation_histories[request.user_id] if user_conversation_histories[request.user_id] else request.conversation_history
+    contents = []
+    for msg in conversation_history:
+        contents.append(types.Content(
+            role="user" if msg.role == "user" else "model",
+            parts=[types.Part.from_text(text=msg.content)]
+        ))
+    user_prompt = request.message
+    contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
+
+    user_prompt_type = get_user_prompt_type(contents[-2:], token_counter)
+
+    # Check usage limits before starting the stream
+    role_category = get_role_category(user_role)
+    exceeded = await check_usage_limits(request.user_id, user_prompt_type, role_category)
+    if exceeded:
+        return JSONResponse(status_code=429, content=exceeded)
+
     async def event_stream():
         try:
-            conversation_history = user_conversation_histories[request.user_id] if user_conversation_histories[request.user_id] else request.conversation_history
-
-            contents = []
-            for msg in conversation_history:
-                contents.append(types.Content(
-                    role="user" if msg.role == "user" else "model",
-                    parts=[types.Part.from_text(text=msg.content)]
-                ))
-
-            user_prompt = request.message
-            contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
-
-            user_prompt_type = get_user_prompt_type(contents[-2:], token_counter)
-
             user_language_code = None
             web_search_queries = []
             retrieval_ids = {}

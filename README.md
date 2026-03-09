@@ -78,6 +78,9 @@ GITHUB_ACCESS_TOKEN=your_github_token
 # JWT 驗證
 JWT_SECRET=your_jwt_secret
 
+# 用量限制 API
+USAGE_API=https://your-usage-api
+
 # MCP Server（選用）
 REMOTE_MCP_SERVER=https://your-mcp-server
 
@@ -175,8 +178,13 @@ docker run -p 9000:8080 --env-file .env mm-madam
 }
 ```
 
+**429 Response（用量超限）：**
+```json
+[{"question_type": "客服", "usage": 5, "limit": 5, "period": "daily"}]
+```
+
 ### POST /chat-stream
-串流聊天端點，使用 Server-Sent Events（SSE）即時回傳 AI 回應。請求格式與 `/chat` 相同。
+串流聊天端點，使用 Server-Sent Events（SSE）即時回傳 AI 回應。請求格式與 `/chat` 相同。用量超限時回傳 HTTP 429（同 `/chat` 格式）。
 
 ### POST /search
 站內搜尋端點，使用 Google Custom Search API。
