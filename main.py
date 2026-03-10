@@ -44,12 +44,62 @@ GITHUB_ACCESS_TOKEN = os.getenv('GITHUB_ACCESS_TOKEN')
 LOGGER = os.getenv('LOGGER')
 JWT_SECRET = os.getenv('JWT_SECRET')
 USAGE_API = os.getenv('USAGE_API')
+USAGE_LIMITS_URL = os.getenv('USAGE_LIMITS_URL')
 MCP_USER_ID = 101001000
 TAIPEI_OFFSET = 8
-USAGE_LIMITS = {
+PERIOD_MAP = {'day': 'daily', 'week': 'weekly', 'month': 'monthly'}
+USAGE_LIMITS_DEFAULT = {
     'FREE': {'客服': (5, 'daily')},
     'PAID': {'客服': (10, 'weekly'), '總經': (5, 'monthly')},
 }
+
+
+TTL_CACHE = {}
+TTL_SECONDS = 300  # 5 minutes
+
+
+def ttl_cached(key, fetcher):
+    """Return cached value for key, refreshing via fetcher() if older than TTL."""
+    now = time.time()
+    entry = TTL_CACHE.get(key)
+    if not entry or now - entry['t'] > TTL_SECONDS:
+        TTL_CACHE[key] = {'data': fetcher(), 't': now}
+    return TTL_CACHE[key]['data']
+
+
+def fetch_usage_limits():
+    """Fetch USAGE_LIMITS from Google Sheet CSV. Falls back to default on error."""
+    if not USAGE_LIMITS_URL:
+        return USAGE_LIMITS_DEFAULT
+    try:
+        resp = requests.get(USAGE_LIMITS_URL, timeout=10)
+        resp.raise_for_status()
+        resp.encoding = 'utf-8'
+        reader = csv.reader(resp.text.strip().splitlines())
+        header = next(reader)  # e.g. ['', '客服', '總經']
+        question_types = header[1:]
+        limits = {}
+        for row in reader:
+            role = row[0].strip()  # e.g. 'FREE', 'PAID'
+            role_limits = {}
+            for i, cell in enumerate(row[1:], start=0):
+                cell = cell.strip()
+                if not cell:
+                    continue
+                count, period_key = cell.split('/')
+                period = PERIOD_MAP.get(period_key, period_key)
+                role_limits[question_types[i]] = (int(count), period)
+            if role_limits:
+                limits[role] = role_limits
+        print(f"USAGE_LIMITS loaded from Google Sheet: {limits}")
+        return limits
+    except Exception as e:
+        print(f"Failed to fetch USAGE_LIMITS, using default: {e}")
+        return USAGE_LIMITS_DEFAULT
+
+
+def get_usage_limits():
+    return ttl_cached('usage_limits', fetch_usage_limits)
 
 app = FastAPI(title="MM Madam API", version="1.0.0")
 
@@ -202,14 +252,20 @@ class TokenCounter:
 
 client = genai.Client()
 
-@lru_cache(maxsize=1)
-def get_base_system_prompt():
-    """Fetch and cache the base system prompt (only downloaded once per app lifecycle)"""
+def fetch_base_system_prompt():
     text = requests.get(SYSTEM_PROMPT_URL).text
     parts = text.split('\n\n')[:3]
     return parts[0], parts[1], parts[2]  # system_prompt, for_paid_user, for_free_user
 
-@lru_cache(maxsize=1)
+
+def get_base_system_prompt():
+    return ttl_cached('system_prompt', fetch_base_system_prompt)
+
+
+def get_marketing_prompt():
+    return ttl_cached('marketing_prompt', lambda: requests.get(MARKETING_PROMPT_URL).text)
+
+@lru_cache(maxsize=1)  # heavy operation (downloads podcasts + CSVs), keep cold-start-only
 def get_knowledge():
     knowledge = {}
     try:
@@ -587,7 +643,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
                 system_prompt += f'（hyperlink pattern: https://support.macromicro.me/hc/{lang_route}/articles/{{id}}）'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
         system_prompt += '\n- 若非網站功能操作客服相關問題，你會婉拒回答'
-        system_prompt += '\n\n---\n' + requests.get(MARKETING_PROMPT_URL).text
+        system_prompt += '\n\n---\n' + get_marketing_prompt()
 
         return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
 
@@ -764,7 +820,7 @@ async def check_usage_limits(user_id, question_type, role_category):
     if role_category == 'BIZ':
         return None
 
-    limits = USAGE_LIMITS.get(role_category, {})
+    limits = get_usage_limits().get(role_category, {})
     limit_entry = limits.get(question_type)
     if not limit_entry:
         return None
@@ -1089,6 +1145,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
         return JSONResponse(status_code=429, content=exceeded)
 
     async def event_stream():
+        nonlocal contents
         try:
             user_language_code = None
             web_search_queries = []

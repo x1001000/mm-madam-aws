@@ -78,8 +78,9 @@ GITHUB_ACCESS_TOKEN=your_github_token
 # JWT 驗證
 JWT_SECRET=your_jwt_secret
 
-# 用量限制 API
+# 用量限制
 USAGE_API=https://your-usage-api
+USAGE_LIMITS_URL=https://docs.google.com/spreadsheets/d/.../export?format=csv
 
 # MCP Server（選用）
 REMOTE_MCP_SERVER=https://your-mcp-server
