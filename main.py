@@ -49,7 +49,7 @@ MCP_USER_ID = 101001000
 TAIPEI_OFFSET = 8
 PERIOD_MAP = {'day': 'daily', 'week': 'weekly', 'month': 'monthly'}
 USAGE_LIMITS_DEFAULT = {
-    'FREE': {'客服': (5, 'daily')},
+    'FREE': {'客服': (10, 'weekly')},
     'PAID': {'客服': (10, 'weekly'), '總經': (5, 'monthly')},
 }
 
