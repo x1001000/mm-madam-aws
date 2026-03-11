@@ -1110,9 +1110,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
     except jwt.InvalidTokenError as e:
         error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"
         print(f"JWT error: {error_type}")
-        async def error_stream():
-            yield f'event: error\ndata: {json.dumps({"message": "您的登入已過期，請重新整理頁面後再試。"})}\n\n'
-        return StreamingResponse(error_stream(), media_type="text/event-stream")
+        return JSONResponse(status_code=401, content={"message": "您的登入已過期，請重新整理頁面後再試。"})
 
     request_time = time.time()
     token_counter = TokenCounter()
