@@ -163,7 +163,7 @@ class ChatRequest(BaseModel):
     response_type: Optional[str] = 'html'
     current_page_html: Optional[str] = None  # text content of the page where chat bubble is used
     current_page_url: Optional[str] = None  # URL of the page where chat bubble is used (for logging)
-    lang: Optional[str] = None
+    lang: str = "en"
 
 class ChatResponse(BaseModel):
     response_html: str
@@ -878,8 +878,10 @@ async def chat(request: ChatRequest, request_obj: Request):
         error_time = time.time()
         error_message = "您的登入已過期，請重新整理頁面後再試。"
         payload = {
-            "started": round(error_time),
             "user_id": request.user_id,
+            "started": round(error_time),
+            "lang": request.lang,
+            "question_type": "",
             "question": request.message,
             "answer": error_message,
             "prompt_token_count": 0,
@@ -1025,8 +1027,10 @@ async def chat(request: ChatRequest, request_obj: Request):
 
         # Logger
         payload = {
-            "started": round(session_start_time),
             "user_id": request.user_id,
+            "started": round(session_start_time),
+            "lang": request.lang,
+            "question_type": user_prompt_type,
             "question": user_prompt,
             "answer": response_text,
             "prompt_token_count": token_counter.prompt_token_count,
@@ -1037,8 +1041,6 @@ async def chat(request: ChatRequest, request_obj: Request):
             "total_token_count": token_counter.total_token_count,
             "cost": token_counter.total_cost(),
             "models_used": config.quality_model,
-            "lang": request.lang,
-            "question_type": user_prompt_type,
             "extras_json": json.dumps({
                 "語言": user_language_code,
                 "分類": user_prompt_type,
@@ -1051,7 +1053,7 @@ async def chat(request: ChatRequest, request_obj: Request):
             "state": "ok"
         }
         requests.post(LOGGER, json=payload)
-        
+
         response_html = convert_to_html(response_text)
 
         return ChatResponse(
@@ -1214,8 +1216,10 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
 
             # Logger
             payload = {
-                "started": round(session_start_time),
                 "user_id": request.user_id,
+                "started": round(session_start_time),
+                "lang": request.lang,
+                "question_type": user_prompt_type,
                 "question": user_prompt,
                 "answer": response_text,
                 "prompt_token_count": token_counter.prompt_token_count,
@@ -1226,8 +1230,6 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
                 "total_token_count": token_counter.total_token_count,
                 "cost": token_counter.total_cost(),
                 "models_used": config.quality_model,
-                "lang": request.lang,
-                "question_type": user_prompt_type,
                 "extras_json": json.dumps({
                     "語言": user_language_code,
                     "分類": user_prompt_type,
