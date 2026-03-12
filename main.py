@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 from google import genai
 from google.genai import types
 import csv
@@ -49,8 +49,8 @@ MCP_USER_ID = 101001000
 TAIPEI_OFFSET = 8
 PERIOD_MAP = {'day': 'daily', 'week': 'weekly', 'month': 'monthly'}
 USAGE_LIMITS_DEFAULT = {
-    'FREE': {'客服': (10, 'weekly'), '總經': (0, 'monthly')},
-    'PAID': {'客服': (10, 'weekly'), '總經': (5, 'monthly')},
+    'FREE': {'CUSTOMER_SERVICE': (10, 'weekly'), 'MACROECONOMICS': (0, 'monthly')},
+    'PAID': {'CUSTOMER_SERVICE': (10, 'weekly'), 'MACROECONOMICS': (5, 'monthly')},
 }
 
 
@@ -76,7 +76,7 @@ def fetch_usage_limits():
         resp.raise_for_status()
         resp.encoding = 'utf-8'
         reader = csv.reader(resp.text.strip().splitlines())
-        header = next(reader)  # e.g. ['', '客服', '總經']
+        header = next(reader)  # e.g. ['', 'CUSTOMER_SERVICE', 'MACROECONOMICS']
         question_types = header[1:]
         limits = {}
         for row in reader:
@@ -163,6 +163,7 @@ class ChatRequest(BaseModel):
     response_type: Optional[str] = 'html'
     current_page_html: Optional[str] = None  # text content of the page where chat bubble is used
     current_page_url: Optional[str] = None  # URL of the page where chat bubble is used (for logging)
+    lang: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response_html: str
@@ -448,9 +449,9 @@ async def generate_content_stream(contents, system_prompt, token_counter, model=
         token_counter.accumulate(last_usage, model)
 
 def get_user_prompt_type(contents, token_counter):
-    system_prompt = '用戶訊息分類：總經財經市場新聞時事相關問題、網站功能操作客服或其他問題、製圖請求，以「總經」、「客服」、「製圖」三選一回傳'
+    system_prompt = '用戶訊息分類：總經財經市場新聞時事相關問題、網站功能操作客服或其他問題、製圖請求，以 MACROECONOMICS、CUSTOMER_SERVICE、CHARTING 三選一回傳'
     response_type = 'application/json'
-    response_schema = str
+    response_schema = Literal['MACROECONOMICS', 'CUSTOMER_SERVICE', 'CHARTING']
     tools = None
     try:
         response_parsed = generate_content(contents, system_prompt, response_type, response_schema, tools, token_counter).parsed
@@ -623,7 +624,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     system_prompt, for_paid_user, for_free_user = get_base_system_prompt()
 
     # For non-financial queries, use the original sequential approach
-    if '客服' in user_prompt_type:
+    if user_prompt_type == 'CUSTOMER_SERVICE':
         # Detect language (single API call, no need for parallelization)
         user_language_code = get_user_language_code(user_prompt, token_counter)
         lang_id = LANG_IDS.get(user_language_code.lower(), 2)
@@ -642,7 +643,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
                 system_prompt += '\n- MM幫助中心的相關資料'
                 system_prompt += f'（hyperlink pattern: https://support.macromicro.me/hc/{lang_route}/articles/{{id}}）'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
-        system_prompt += '\n- 若非網站功能操作客服相關問題，你會婉拒回答'
+        system_prompt += '\n- 若非網站功能操作及客服相關問題，你會婉拒回答'
         system_prompt += '\n\n---\n' + get_marketing_prompt()
 
         return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
@@ -826,6 +827,8 @@ async def check_usage_limits(user_id, question_type, role_category):
         return None
 
     max_count, period = limit_entry
+    if max_count == 0:
+        return [{'question_type': question_type, 'usage': 0, 'limit': 0, 'period': period}]
     start_at, end_at = get_usage_period(period)
 
     try:
@@ -949,7 +952,7 @@ async def chat(request: ChatRequest, request_obj: Request):
         web_search_queries = []
         retrieval_ids = {}
 
-        if '製圖' in user_prompt_type:
+        if user_prompt_type == 'CHARTING':
             # Chart instruction - get chart config from MCP and return directly
             chart_config = await get_chart_config_from_mcp(user_prompt)
             if chart_config:
@@ -1034,6 +1037,8 @@ async def chat(request: ChatRequest, request_obj: Request):
             "total_token_count": token_counter.total_token_count,
             "cost": token_counter.total_cost(),
             "models_used": config.quality_model,
+            "lang": request.lang,
+            "question_type": user_prompt_type,
             "extras_json": json.dumps({
                 "語言": user_language_code,
                 "分類": user_prompt_type,
@@ -1149,7 +1154,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
             web_search_queries = []
             retrieval_ids = {}
 
-            if '製圖' in user_prompt_type:
+            if user_prompt_type == 'CHARTING':
                 chart_config = await get_chart_config_from_mcp(user_prompt)
                 response_text = chart_config if chart_config else "無法生成圖表配置，請提供更具體的圖表需求"
                 SUBDOMAIN = SUBDOMAINS[0]
@@ -1221,6 +1226,8 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
                 "total_token_count": token_counter.total_token_count,
                 "cost": token_counter.total_cost(),
                 "models_used": config.quality_model,
+                "lang": request.lang,
+                "question_type": user_prompt_type,
                 "extras_json": json.dumps({
                     "語言": user_language_code,
                     "分類": user_prompt_type,
