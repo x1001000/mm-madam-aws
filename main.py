@@ -461,7 +461,7 @@ def get_user_prompt_type(contents, token_counter):
         raise HTTPException(status_code=500, detail=f"Type detection error: {e}")
 
 def get_user_language_code(user_prompt, token_counter):
-    system_prompt = 'Given a user query, identify its language code'
+    system_prompt = 'Given a user query, identify its language code. For Chinese, always return zh-TW for Traditional Chinese or zh-CN for Simplified Chinese, never just zh.'
     response_type = 'application/json'
     response_schema = str
     tools = None
@@ -484,7 +484,7 @@ def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter, N_
 
 # Async versions of retrieval functions for parallel execution
 async def get_user_language_code_async(user_prompt, token_counter):
-    system_prompt = 'Given a user query, identify its language code'
+    system_prompt = 'Given a user query, identify its language code. For Chinese, always return zh-TW for Traditional Chinese or zh-CN for Simplified Chinese, never just zh.'
     response_type = 'application/json'
     response_schema = str
     tools = None
