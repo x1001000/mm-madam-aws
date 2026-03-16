@@ -939,7 +939,10 @@ async def chat(request: ChatRequest, request_obj: Request):
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
         
         # Check if this is a chart instruction first
-        user_prompt_type = get_user_prompt_type(contents[-2:], token_counter)
+        recent = contents[-2:]
+        if len(recent) == 2 and recent[0].role == "user":
+            recent = recent[-1:]
+        user_prompt_type = get_user_prompt_type(recent, token_counter)
 
         # Check usage limits (MCP has no limits)
         if request.user_id != MCP_USER_ID:
@@ -1139,7 +1142,10 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
     user_prompt = request.message
     contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
 
-    user_prompt_type = get_user_prompt_type(contents[-2:], token_counter)
+    recent = contents[-2:]
+    if len(recent) == 2 and recent[0].role == "user":
+        recent = recent[-1:]
+    user_prompt_type = get_user_prompt_type(recent, token_counter)
 
     # Check usage limits before starting the stream
     role_category = get_role_category(user_role)
