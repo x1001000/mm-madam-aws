@@ -141,13 +141,8 @@ PRICING = {
 }
 DEFAULT_MODEL = 'gemini-3-flash-preview'
 
-# SITE_LANGUAGES = ['繁體中文', '简体中文', 'English']
-SUBDOMAINS = ['www', 'sc', 'en']
-LANG_ROUTES = ['zh-tw', 'zh-cn', 'en-001']
-LANG_IDS = {
-    'zh-hant': 0, 'zh-tw': 0, 'tw': 0, 'zh': 0,
-    'zh-hans': 1, 'zh-cn': 1, 'cn': 1,
-}
+LANG_TO_SUBDOMAIN = {'tc': 'www', 'sc': 'sc', 'en': 'en'}
+LANG_TO_ROUTE = {'tc': 'zh-tw', 'sc': 'zh-cn', 'en': 'en-001'}
 
 # Request/Response models
 class ChatMessage(BaseModel):
@@ -163,7 +158,7 @@ class ChatRequest(BaseModel):
     response_type: Optional[str] = 'html'
     current_page_html: Optional[str] = None  # text content of the page where chat bubble is used
     current_page_url: Optional[str] = None  # URL of the page where chat bubble is used (for logging)
-    lang: str = "en"
+    lang: str = 'tc'
 
 class ChatResponse(BaseModel):
     response_html: str
@@ -611,7 +606,7 @@ async def get_chart_config_from_mcp(user_prompt):
     return '此功能暫未開放，敬請期待！'
 
 
-async def build_system_prompt(user_prompt_type, contents, config, knowledge, token_counter):
+async def build_system_prompt(user_prompt_type, contents, config, knowledge, token_counter, lang='tc'):
     """Build the system prompt based on user input and configuration (async version with parallel API calls)"""
     # Initialize tracking variables
     web_search_queries = []
@@ -628,14 +623,13 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     if user_prompt_type == 'CUSTOMER_SERVICE':
         # Detect language (single API call, no need for parallelization)
         user_language_code = get_user_language_code(user_prompt, token_counter)
-        lang_id = LANG_IDS.get(user_language_code.lower(), 2)
-        SUBDOMAIN = SUBDOMAINS[lang_id]
+        SUBDOMAIN = LANG_TO_SUBDOMAIN[lang]
 
-        system_prompt += f'\n- SUBDOMAIN = "{SUBDOMAIN}"'
-        system_prompt += f'\n- You MUST respond in user language code: "{user_language_code}"'
+        system_prompt += f"\n- SUBDOMAIN == '{SUBDOMAIN}'"
+        system_prompt += f"\n- Regardless of SUBDOMAIN, you MUST respond in user_language_code:='{user_language_code}'"
 
         if config.has_help_center:
-            lang_route = LANG_ROUTES[lang_id]
+            lang_route = LANG_TO_ROUTE[lang]
             system_prompt += f'\n- MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
             system_prompt += '\n- 切勿提供來信或來電的客服聯繫方式'
             retrieval, ids = get_retrieval_from_help_center(f'hc/{lang_route}/_log.csv', user_prompt, knowledge, token_counter, N_most_relevant)
@@ -647,7 +641,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         system_prompt += '\n- 若非網站功能操作及客服相關問題，你會婉拒回答'
         system_prompt += '\n\n---\n' + get_marketing_prompt()
 
-        return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
+        return system_prompt, user_language_code, web_search_queries, retrieval_ids
 
     # For financial queries, use parallel API calls
     async with httpx.AsyncClient() as http_client:
@@ -693,11 +687,10 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 
     # Process language result
     user_language_code = results_dict.get('language')
-    lang_id = LANG_IDS.get(user_language_code.lower(), 2)
-    SUBDOMAIN = SUBDOMAINS[lang_id]
+    SUBDOMAIN = LANG_TO_SUBDOMAIN[lang]
 
-    system_prompt += f'\n- SUBDOMAIN = "{SUBDOMAIN}"'
-    system_prompt += f'\n- You MUST respond in user language code: "{user_language_code}"'
+    system_prompt += f"\n- SUBDOMAIN == '{SUBDOMAIN}'"
+    system_prompt += f"\n- Regardless of SUBDOMAIN, you MUST respond in user_language_code:='{user_language_code}'"
 
     if config.is_paid_user:
         system_prompt += f'\n{for_paid_user}\n'
@@ -773,7 +766,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
             system_prompt += '\n- 網路搜尋的相關資料'
             system_prompt += f'\n```\n{retrieval}\n```\n'
 
-    return system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids
+    return system_prompt, user_language_code, web_search_queries, retrieval_ids
 
 
 def convert_to_html(response_text):
@@ -962,11 +955,10 @@ async def chat(request: ChatRequest, request_obj: Request):
                 response_text = chart_config
             else:
                 response_text = "無法生成圖表配置，請提供更具體的圖表需求"
-            SUBDOMAIN = SUBDOMAINS[0]  # Default subdomain
             user_language_code = "zh-TW"  # Default language code for chart instructions
         else:
             # Build system prompt using contents[-2:]
-            system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter)
+            system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
 
             # Add current page text to system prompt if provided
             if request.current_page_html:
@@ -1160,11 +1152,10 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
             if user_prompt_type == 'CHARTING':
                 chart_config = await get_chart_config_from_mcp(user_prompt)
                 response_text = chart_config if chart_config else "無法生成圖表配置，請提供更具體的圖表需求"
-                SUBDOMAIN = SUBDOMAINS[0]
                 user_language_code = "zh-TW"
                 yield f'event: chunk\ndata: {json.dumps({"text": response_text})}\n\n'
             else:
-                system_prompt, SUBDOMAIN, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter)
+                system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
 
                 if request.current_page_html:
                     main_match = re.search(r'<main[^>]*>(.*?)</main>', request.current_page_html, re.DOTALL | re.IGNORECASE)
