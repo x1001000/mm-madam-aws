@@ -464,7 +464,7 @@ def get_user_prompt_type(contents, token_counter):
         raise HTTPException(status_code=500, detail=f"Type detection error: {e}")
 
 def get_user_language_code(user_prompt, token_counter):
-    system_prompt = 'Given a user query, identify its language code. For Chinese, always return zh-TW for Traditional Chinese or zh-CN for Simplified Chinese, never just zh.'
+    system_prompt = 'Given a user query, identify its language code. For Chinese, always return zh-tw for Traditional Chinese or zh-cn for Simplified Chinese, never just zh.'
     response_type = 'application/json'
     response_schema = str
     tools = None
@@ -487,7 +487,7 @@ def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter, N_
 
 # Async versions of retrieval functions for parallel execution
 async def get_user_language_code_async(user_prompt, token_counter):
-    system_prompt = 'Given a user query, identify its language code. For Chinese, always return zh-TW for Traditional Chinese or zh-CN for Simplified Chinese, never just zh.'
+    system_prompt = 'Given a user query, identify its language code. For Chinese, always return zh-tw for Traditional Chinese or zh-cn for Simplified Chinese, never just zh.'
     response_type = 'application/json'
     response_schema = str
     tools = None
@@ -960,7 +960,7 @@ async def chat(request: ChatRequest, request_obj: Request):
                 response_text = chart_config
             else:
                 response_text = "無法生成圖表配置，請提供更具體的圖表需求"
-            user_language_code = "zh-TW"  # Default language code for chart instructions
+            user_language_code = 'zh-tw'  # Default language code for chart instructions
         else:
             # Build system prompt using contents[-2:]
             system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
@@ -1157,7 +1157,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
             if user_prompt_type == 'CHARTING':
                 chart_config = await get_chart_config_from_mcp(user_prompt)
                 response_text = chart_config if chart_config else "無法生成圖表配置，請提供更具體的圖表需求"
-                user_language_code = "zh-TW"
+                user_language_code = 'zh-tw'
                 yield f'event: chunk\ndata: {json.dumps({"text": response_text})}\n\n'
             else:
                 system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
