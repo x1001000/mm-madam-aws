@@ -255,8 +255,9 @@ client = genai.Client()
 
 def fetch_base_system_prompt():
     text = requests.get(SYSTEM_PROMPT_URL).text
-    parts = text.split('\n\n')[:3]
-    return parts[0], parts[1], parts[2]  # system_prompt, for_paid_user, for_free_user
+    parts = re.split(r'^# .+\n', text, flags=re.MULTILINE)
+    # parts[0] is empty (before first heading), tabs are parts[1], [2], [3]
+    return parts[1].strip(), parts[2].strip(), parts[3].strip()  # system_prompt, for_paid_user, for_free_user
 
 
 def get_base_system_prompt():
