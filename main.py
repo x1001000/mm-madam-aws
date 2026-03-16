@@ -259,8 +259,15 @@ def get_base_system_prompt():
     return ttl_cached('system_prompt', fetch_base_system_prompt)
 
 
-def get_marketing_prompt():
-    return ttl_cached('marketing_prompt', lambda: requests.get(MARKETING_PROMPT_URL).text)
+def fetch_marketing_prompts():
+    text = requests.get(MARKETING_PROMPT_URL).text
+    parts = re.split(r'^# .+\n', text, flags=re.MULTILINE)
+    # parts[0] is empty (before first heading), tab 1 (www/sc) is parts[1], tab 2 (en) is parts[2]
+    return parts[1].strip(), parts[2].strip()
+
+def get_marketing_prompt(lang='tc'):
+    prompts = ttl_cached('marketing_prompt', fetch_marketing_prompts)
+    return prompts[1] if lang == 'en' else prompts[0]
 
 @lru_cache(maxsize=1)  # heavy operation (downloads podcasts + CSVs), keep cold-start-only
 def get_knowledge():
@@ -619,13 +626,14 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     # Get base system prompt (cached)
     system_prompt, for_paid_user, for_free_user = get_base_system_prompt()
 
+    # Determine subdomain based on site language choice
+    SUBDOMAIN = LANG_TO_SUBDOMAIN[lang]
+    system_prompt += f"\n- SUBDOMAIN == '{SUBDOMAIN}'"
+
     # For non-financial queries, use the original sequential approach
     if user_prompt_type == 'CUSTOMER_SERVICE':
         # Detect language (single API call, no need for parallelization)
         user_language_code = get_user_language_code(user_prompt, token_counter)
-        SUBDOMAIN = LANG_TO_SUBDOMAIN[lang]
-
-        system_prompt += f"\n- SUBDOMAIN == '{SUBDOMAIN}'"
         system_prompt += f"\n- Regardless of SUBDOMAIN, you MUST respond in user_language_code:='{user_language_code}'"
 
         if config.has_help_center:
@@ -639,7 +647,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
                 system_prompt += f'（hyperlink pattern: https://support.macromicro.me/hc/{lang_route}/articles/{{id}}）'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
         system_prompt += '\n- 若非網站功能操作及客服相關問題，你會婉拒回答'
-        system_prompt += '\n\n---\n' + get_marketing_prompt()
+        system_prompt += '\n\n---\n' + get_marketing_prompt(lang)
 
         return system_prompt, user_language_code, web_search_queries, retrieval_ids
 
@@ -687,9 +695,6 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 
     # Process language result
     user_language_code = results_dict.get('language')
-    SUBDOMAIN = LANG_TO_SUBDOMAIN[lang]
-
-    system_prompt += f"\n- SUBDOMAIN == '{SUBDOMAIN}'"
     system_prompt += f"\n- Regardless of SUBDOMAIN, you MUST respond in user_language_code:='{user_language_code}'"
 
     if config.is_paid_user:
