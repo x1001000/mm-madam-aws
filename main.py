@@ -718,7 +718,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
             retrieval_ids['quickie'] = ids
             system_prompt += '\n- MM短評的相關資料'
             if SUBDOMAIN == 'en':
-                system_prompt += '，可引用，但切勿超連結'
+                system_prompt += '，可引用，但不可提供超連結'
             else:
                 system_prompt += f'（hyperlink pattern: https://{SUBDOMAIN}.macromicro.me/quickie?id={{id}}）'
             system_prompt += f'\n```\n{retrieval}\n```\n'
@@ -730,7 +730,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
             retrieval_ids['post'] = ids
             system_prompt += '\n- MM中文部落格的相關資料'
             if SUBDOMAIN == 'en':
-                system_prompt += '，可引用，但切勿超連結'
+                system_prompt += '，可引用，但不可提供超連結'
             else:
                 system_prompt += f'（hyperlink pattern: https://{SUBDOMAIN}.macromicro.me/blog/{{slug}}）'
             system_prompt += f'\n```\n{retrieval}\n```\n'
@@ -750,7 +750,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         if retrieval:
             retrieval_ids['edm'] = ids
             system_prompt += '\n- MM獨家報告的相關資料'
-            system_prompt += '，可引用，但切勿超連結'
+            system_prompt += '，可引用，但不可提供超連結'
             system_prompt += f'\n```\n{retrieval}\n```\n'
 
     # Process podcast retrieval
@@ -759,7 +759,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         if retrieval:
             retrieval_ids['podcast'] = ids
             system_prompt += '\n- MM Podcast的相關資料'
-            system_prompt += '，可引用，但切勿超連結'
+            system_prompt += '，可引用，但不可提供超連結'
             system_prompt += f'\n```\n{retrieval}\n```\n'
 
     # Process google search retrieval
