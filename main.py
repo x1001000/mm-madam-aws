@@ -452,9 +452,9 @@ async def generate_content_stream(contents, system_prompt, token_counter, model=
         token_counter.accumulate(last_usage, model)
 
 def get_user_prompt_type(contents, token_counter):
-    system_prompt = '用戶訊息分類：總經財經市場新聞時事相關問題、網站功能操作客服或其他問題、製圖請求，以 MACROECONOMICS、CUSTOMER_SERVICE、CHARTING 三選一回傳'
+    system_prompt = '用戶訊息分類：總經財經市場新聞時事相關問題、網站功能操作客服或其他問題，以 MACROECONOMICS、CUSTOMER_SERVICE 二選一回傳'
     response_type = 'application/json'
-    response_schema = Literal['MACROECONOMICS', 'CUSTOMER_SERVICE', 'CHARTING']
+    response_schema = Literal['MACROECONOMICS', 'CUSTOMER_SERVICE']
     tools = None
     try:
         response_parsed = generate_content(contents, system_prompt, response_type, response_schema, tools, token_counter).parsed
@@ -956,35 +956,26 @@ async def chat(request: ChatRequest, request_obj: Request):
         web_search_queries = []
         retrieval_ids = {}
 
-        if user_prompt_type == 'CHARTING':
-            # Chart instruction - get chart config from MCP and return directly
-            chart_config = await get_chart_config_from_mcp(user_prompt)
-            if chart_config:
-                response_text = chart_config
-            else:
-                response_text = "無法生成圖表配置，請提供更具體的圖表需求"
-            user_language_code = 'zh-tw'  # Default language code for chart instructions
-        else:
-            # Build system prompt using contents[-2:]
-            system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
+        # Build system prompt using contents[-2:]
+        system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
 
-            # Add current page text to system prompt if provided
-            if request.current_page_html:
-                # Extract main tag content to exclude header and footer
-                main_match = re.search(r'<main[^>]*>(.*?)</main>', request.current_page_html, re.DOTALL | re.IGNORECASE)
-                html_content = main_match.group(1) if main_match else request.current_page_html
-                system_prompt += '\n- 用戶當前頁面內容：'
-                system_prompt += f'\n```\n{markdownify(html_content)}\n```\n'
+        # Add current page text to system prompt if provided
+        if request.current_page_html:
+            # Extract main tag content to exclude header and footer
+            main_match = re.search(r'<main[^>]*>(.*?)</main>', request.current_page_html, re.DOTALL | re.IGNORECASE)
+            html_content = main_match.group(1) if main_match else request.current_page_html
+            system_prompt += '\n- 用戶當前頁面內容：'
+            system_prompt += f'\n```\n{markdownify(html_content)}\n```\n'
 
-            global last_system_prompt
-            last_system_prompt = system_prompt
-            
-            # Generate response
-            response_type = 'text/plain'
-            response_schema = None
-            tools = None#[types.Tool(function_declarations=function_declarations)]
-            # print('config.thinking_budget', config.thinking_budget)
-            response_text = generate_content(contents, system_prompt, response_type, response_schema, tools, token_counter, model=config.quality_model, thinking_config=types.ThinkingConfig(thinking_budget=config.thinking_budget)).text
+        global last_system_prompt
+        last_system_prompt = system_prompt
+
+        # Generate response
+        response_type = 'text/plain'
+        response_schema = None
+        tools = None#[types.Tool(function_declarations=function_declarations)]
+        # print('config.thinking_budget', config.thinking_budget)
+        response_text = generate_content(contents, system_prompt, response_type, response_schema, tools, token_counter, model=config.quality_model, thinking_config=types.ThinkingConfig(thinking_budget=config.thinking_budget)).text
         contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
         # Keep only previous N rounds of conversation history
         contents = contents[-2 * config.conversation_rounds:]
@@ -1160,28 +1151,22 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
             web_search_queries = []
             retrieval_ids = {}
 
-            if user_prompt_type == 'CHARTING':
-                chart_config = await get_chart_config_from_mcp(user_prompt)
-                response_text = chart_config if chart_config else "無法生成圖表配置，請提供更具體的圖表需求"
-                user_language_code = 'zh-tw'
-                yield f'event: chunk\ndata: {json.dumps({"text": response_text})}\n\n'
-            else:
-                system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
+            system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
 
-                if request.current_page_html:
-                    main_match = re.search(r'<main[^>]*>(.*?)</main>', request.current_page_html, re.DOTALL | re.IGNORECASE)
-                    html_content = main_match.group(1) if main_match else request.current_page_html
-                    system_prompt += '\n- 用戶當前頁面內容：'
-                    system_prompt += f'\n```\n{markdownify(html_content)}\n```\n'
+            if request.current_page_html:
+                main_match = re.search(r'<main[^>]*>(.*?)</main>', request.current_page_html, re.DOTALL | re.IGNORECASE)
+                html_content = main_match.group(1) if main_match else request.current_page_html
+                system_prompt += '\n- 用戶當前頁面內容：'
+                system_prompt += f'\n```\n{markdownify(html_content)}\n```\n'
 
-                global last_system_prompt
-                last_system_prompt = system_prompt
+            global last_system_prompt
+            last_system_prompt = system_prompt
 
-                # Stream Gemini response
-                response_text = ""
-                async for chunk_text in generate_content_stream(contents, system_prompt, token_counter, model=config.quality_model, thinking_config=types.ThinkingConfig(thinking_budget=config.thinking_budget)):
-                    response_text += chunk_text
-                    yield f'event: chunk\ndata: {json.dumps({"text": chunk_text})}\n\n'
+            # Stream Gemini response
+            response_text = ""
+            async for chunk_text in generate_content_stream(contents, system_prompt, token_counter, model=config.quality_model, thinking_config=types.ThinkingConfig(thinking_budget=config.thinking_budget)):
+                response_text += chunk_text
+                yield f'event: chunk\ndata: {json.dumps({"text": chunk_text})}\n\n'
 
             # Update conversation history
             contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
