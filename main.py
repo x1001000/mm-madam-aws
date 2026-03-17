@@ -632,7 +632,8 @@ def google_search_site(query, lang='tc'):
             if '/blog' in item["link"]:
                 results.append(f'📝 [{item["title"]}]({item["link"]})')
         results = sorted(results[:6]) # first 6 results sorted in 📈 📊 📝 order
-        results.append(f'🔍 [{search_label}](/search?q={query})')
+        subdomain = LANG_TO_SUBDOMAIN.get(lang, 'www')
+        results.append(f'🔍 [{search_label}](https://{subdomain}.macromicro.me/search?q={query})')
         return '\n\n'.join(results)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google site search error: {e}")
