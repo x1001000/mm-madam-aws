@@ -38,7 +38,6 @@ MARKETING_PROMPT_URL = os.getenv('MARKETING_PROMPT_URL')
 KNOWLEDGE_CSV_API = os.getenv('KNOWLEDGE_CSV_API')
 CHARTS_DATA_API = os.getenv('CHARTS_DATA_API')
 PODCAST_FOLDER_URL = os.getenv('PODCAST_FOLDER_URL')
-REMOTE_MCP_SERVER = os.getenv('REMOTE_MCP_SERVER')
 GITHUB_GIST_API = os.getenv('GITHUB_GIST_API')
 GITHUB_ACCESS_TOKEN = os.getenv('GITHUB_ACCESS_TOKEN')
 LOGGER = os.getenv('LOGGER')
@@ -144,10 +143,12 @@ DEFAULT_MODEL = 'gemini-3-flash-preview'
 LANG_TO_SUBDOMAIN = {'tc': 'www', 'sc': 'sc', 'en': 'en'}
 LANG_TO_ROUTE = {'tc': 'zh-tw', 'sc': 'zh-cn', 'en': 'en-001'}
 
+
 # Request/Response models
 class ChatMessage(BaseModel):
     role: str
     content: str
+
 
 class ChatRequest(BaseModel):
     user_id: Optional[int] = None  # backward compatible
@@ -160,6 +161,7 @@ class ChatRequest(BaseModel):
     current_page_url: Optional[str] = None  # URL of the page where chat bubble is used (for logging)
     lang: str = 'tc'
 
+
 class ChatResponse(BaseModel):
     response_html: str
     response_markdown: str
@@ -170,6 +172,7 @@ class ChatResponse(BaseModel):
     started: int
     requested: int
     responded: int
+
 
 class ConfigModel(BaseModel):
     is_paid_user: bool = True
@@ -186,15 +189,19 @@ class ConfigModel(BaseModel):
     N_most_relevant: int = 5
     no_single_series: bool = False
 
+
 class SearchRequest(BaseModel):
     query: str
+
 
 class SearchResponse(BaseModel):
     results: str
 
+
 class SystemPromptRequest(BaseModel):
     message: str
     config: Optional[Dict[str, Any]] = {}
+
 
 class SystemPromptResponse(BaseModel):
     system_prompt: str
@@ -203,6 +210,7 @@ class SystemPromptResponse(BaseModel):
 last_system_prompt = ""
 user_sessions = {}  # Track session start times by user_id
 user_conversation_histories = {}  # Store conversation history by user_id
+
 
 class TokenCounter:
     def __init__(self):
@@ -248,6 +256,7 @@ class TokenCounter:
 
 client = genai.Client()
 
+
 def fetch_base_system_prompt():
     text = requests.get(SYSTEM_PROMPT_URL).text
     parts = re.split(r'^# .+\n', text, flags=re.MULTILINE)
@@ -265,9 +274,11 @@ def fetch_marketing_prompts():
     # parts[0] is empty (before first heading), tab 1 (www/sc) is parts[1], tab 2 (en) is parts[2]
     return parts[1].strip(), parts[2].strip()
 
+
 def get_marketing_prompt(lang='tc'):
     prompts = ttl_cached('marketing_prompt', fetch_marketing_prompts)
     return prompts[1] if lang == 'en' else prompts[0]
+
 
 @lru_cache(maxsize=1)  # heavy operation (downloads podcasts + CSVs), keep cold-start-only
 def get_knowledge():
@@ -395,6 +406,7 @@ def get_knowledge():
     return knowledge
 knowledge = get_knowledge()
 
+
 def generate_content(contents, system_prompt, response_type, response_schema, tools, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_budget=0)):
     response = client.models.generate_content(
         model=model,
@@ -411,6 +423,7 @@ def generate_content(contents, system_prompt, response_type, response_schema, to
     # pprint(response.usage_metadata)
     token_counter.accumulate(response.usage_metadata, model)
     return response
+
 
 async def generate_content_async(contents, system_prompt, response_type, response_schema, tools, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_budget=0)):
     try:
@@ -433,6 +446,7 @@ async def generate_content_async(contents, system_prompt, response_type, respons
         print(f'[async] generate_content_async error: {e}')
         raise
 
+
 async def generate_content_stream(contents, system_prompt, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_budget=0)):
     async_client = genai.Client()
     last_usage = None
@@ -451,6 +465,7 @@ async def generate_content_stream(contents, system_prompt, token_counter, model=
     if last_usage:
         token_counter.accumulate(last_usage, model)
 
+
 def get_user_prompt_type(contents, token_counter):
     system_prompt = '用戶訊息分類：總經財經市場新聞時事相關問題、網站功能操作客服或其他問題，以 MACROECONOMICS、CUSTOMER_SERVICE 二選一回傳'
     response_type = 'application/json'
@@ -463,6 +478,7 @@ def get_user_prompt_type(contents, token_counter):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Type detection error: {e}")
 
+
 def get_user_language_code(user_prompt, token_counter):
     system_prompt = 'Given a user query, identify its language code. For Chinese, always return zh-tw for Traditional Chinese or zh-cn for Simplified Chinese, never just zh.'
     response_type = 'application/json'
@@ -472,6 +488,7 @@ def get_user_language_code(user_prompt, token_counter):
         return generate_content(user_prompt, system_prompt, response_type, response_schema, tools, token_counter).parsed
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Language detection error: {e}")
+
 
 def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter, N_most_relevant):
     system_prompt = f'Given a user query, identify up to {N_most_relevant} of the most relevant IDs in the JSON below.\n'
@@ -484,6 +501,7 @@ def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter, N_
         return response_parsed
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ID retrieval error: {e}")
+
 
 # Async versions of retrieval functions for parallel execution
 async def get_user_language_code_async(user_prompt, token_counter):
@@ -499,6 +517,7 @@ async def get_user_language_code_async(user_prompt, token_counter):
         print(f"[async] get_user_language_code_async error: {e}")
         raise HTTPException(status_code=500, detail=f"Language detection error: {e}")
 
+
 async def get_most_relevant_ids_async(csv_df_json, user_prompt, knowledge, token_counter, N_most_relevant):
     system_prompt = f'Given a user query, identify up to {N_most_relevant} of the most relevant IDs in the JSON below.\n'
     system_prompt += knowledge.get(csv_df_json, '')
@@ -510,6 +529,7 @@ async def get_most_relevant_ids_async(csv_df_json, user_prompt, knowledge, token
         return response.parsed
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ID retrieval error: {e}")
+
 
 async def get_retrieval_async(csv_file, user_prompt, knowledge, token_counter, N_most_relevant):
     try:
@@ -523,6 +543,7 @@ async def get_retrieval_async(csv_file, user_prompt, knowledge, token_counter, N
     except Exception as e:
         print(f"[async] get_retrieval_async({csv_file}) error: {e}")
         raise
+
 
 async def get_retrieval_from_charts_data_api_async(csv_file, user_prompt, knowledge, token_counter, http_client, N_most_relevant, no_single_series):
     try:
@@ -558,6 +579,7 @@ async def get_retrieval_from_charts_data_api_async(csv_file, user_prompt, knowle
         print(f"[async] get_retrieval_from_charts_data_api_async({csv_file}) error: {e}")
         raise
 
+
 async def get_retrieval_from_google_search_async(user_prompt, token_counter):
     system_prompt = None
     response_type = 'text/plain'
@@ -572,6 +594,7 @@ async def get_retrieval_from_google_search_async(user_prompt, token_counter):
     except Exception as e:
         print(f"[async] get_retrieval_from_google_search_async error: {e}")
         raise HTTPException(status_code=500, detail=f"Google search error: {e}")
+
 
 def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_counter, N_most_relevant):
     if ids := get_most_relevant_ids(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter, N_most_relevant):
@@ -608,9 +631,6 @@ def google_search_site(query):
         return '\n\n'.join(results)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google site search error: {e}")
-
-async def get_chart_config_from_mcp(user_prompt):
-    return '此功能暫未開放，敬請期待！'
 
 
 async def build_system_prompt(user_prompt_type, contents, config, knowledge, token_counter, lang='tc'):
@@ -780,6 +800,7 @@ def convert_to_html(response_text):
     response_html = response_html.replace('<img ', '<img style="max-width: 100%; height: auto;" ')
     response_html = response_html.replace('<a href=', '<a target="_blank" rel="noopener noreferrer" href=')
     return response_html
+
 
 def get_role_category(role):
     """Classify user into 'BIZ', 'FREE', or 'PAID' based on JWT role."""
@@ -1070,6 +1091,7 @@ async def chat(request: ChatRequest, request_obj: Request):
         traceback.print_exc()  # Print full stack trace
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/search", response_model=SearchResponse)
 async def search(request: SearchRequest):
     """Search endpoint for chat widget search mode"""
@@ -1085,6 +1107,7 @@ async def search(request: SearchRequest):
         print(f"Search error: {str(e)}")
         traceback.print_exc()  # Print full stack trace
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/chat-stream")
 async def chat_stream(request: ChatRequest, request_obj: Request):
@@ -1252,6 +1275,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
+
 @app.post("/system-prompt", response_model=SystemPromptResponse)
 async def get_system_prompt(request: SystemPromptRequest):
     """Get the last system prompt used in content generation"""
@@ -1264,6 +1288,7 @@ async def get_system_prompt(request: SystemPromptRequest):
         traceback.print_exc()  # Print full stack trace
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/")
 async def serve_index():
     """Serve the main index.html page"""
@@ -1271,10 +1296,12 @@ async def serve_index():
         raise HTTPException(status_code=404, detail="Not found")
     return FileResponse("test-frontend/index.html")
 
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy"}
+
 
 @app.get("/config")
 async def get_frontend_config():
