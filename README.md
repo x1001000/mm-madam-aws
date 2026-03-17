@@ -35,14 +35,13 @@ MM Madam 是一個基於 FastAPI 開發的 AI 聊天機器人 API，專為 Macro
 | Google Search | 即時網路搜尋（Gemini 原生工具） |
 
 ### 客服功能
-- Help Center 整合（知識庫檢索）
+- Help Center 知識庫（2026-03-17 版本）
 - 根據使用者語言自動切換 Help Center 區域
 
 ### 使用者分類
-系統會自動將使用者問題分為三類：
+系統會自動將使用者問題分為兩類：
 1. **總經** - 財經市場相關問題
 2. **客服** - 網站功能操作問題
-3. **製圖** - 圖表製作請求（開發中）
 
 ## 系統架構
 
@@ -81,9 +80,6 @@ JWT_SECRET=your_jwt_secret
 # 用量限制
 USAGE_API=https://your-usage-api
 USAGE_LIMITS_URL=https://docs.google.com/spreadsheets/d/.../export?format=csv
-
-# MCP Server（選用）
-REMOTE_MCP_SERVER=https://your-mcp-server
 
 # 前端設定（測試用，預設關閉）
 ENABLE_FRONTEND=false
@@ -274,7 +270,7 @@ docker run -p 9000:8080 --env-file .env mm-madam
 ./aws-docker.sh
 ```
 
-### 設定 Lambda Streaming（選用）
+### 設定 Lambda Streaming
 
 ```bash
 # 啟用 Streaming 模式
