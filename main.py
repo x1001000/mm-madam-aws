@@ -142,6 +142,7 @@ DEFAULT_MODEL = 'gemini-3-flash-preview'
 
 LANG_TO_SUBDOMAIN = {'tc': 'www', 'sc': 'sc', 'en': 'en'}
 LANG_TO_ROUTE = {'tc': 'zh-tw', 'sc': 'zh-cn', 'en': 'en-001'}
+LANG_TO_CX = {'tc': '414d6323cec6d419d', 'sc': '75b3a0dc17f00410a', 'en': 'c5e06c51ebc924baf'}
 
 
 # Request/Response models
@@ -192,6 +193,8 @@ class ConfigModel(BaseModel):
 
 class SearchRequest(BaseModel):
     query: str
+    jwt: Optional[str] = None
+    lang: str = 'tc'
 
 
 class SearchResponse(BaseModel):
@@ -608,17 +611,19 @@ def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_count
     return None, []
 
 
-def google_search_site(query):
+def google_search_site(query, lang='tc'):
     results = []
+    search_label = {'tc': '全站搜尋', 'sc': '全站搜寻', 'en': 'Search All'}.get(lang, '全站搜尋')
     try:
-        r = requests.get(f"https://www.googleapis.com/customsearch/v1?key={SEARCH_API_KEY}&cx=414d6323cec6d419d&q={query}")
+        cx = LANG_TO_CX.get(lang, LANG_TO_CX['tc'])
+        r = requests.get(f"https://www.googleapis.com/customsearch/v1?key={SEARCH_API_KEY}&cx={cx}&q={query}")
         d = r.json()
         items = d.get('items', [])
         for item in items:
             print(item["title"])
             print(item["link"])
-            # Skip items with '用戶圖' or 'UGC' in title
-            if '用戶圖' in item["title"] or 'UGC' in item["title"].upper():
+            # Skip items with '用戶圖表' or '用户图表' or 'UGC Charts' in title
+            if '用戶圖表' in item["title"] or '用户图表' in item["title"] or 'UGC Charts' in item["title"]:
                 continue
             if '/series' in item["link"]:
                 results.append(f'📈 [{item["title"]}]({item["link"]})')
@@ -627,7 +632,7 @@ def google_search_site(query):
             if '/blog' in item["link"]:
                 results.append(f'📝 [{item["title"]}]({item["link"]})')
         results = sorted(results[:6]) # first 6 results sorted in 📈 📊 📝 order
-        results.append(f'🔍 [全站搜尋](/search?q={query})')
+        results.append(f'🔍 [{search_label}](/search?q={query})')
         return '\n\n'.join(results)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google site search error: {e}")
@@ -1092,23 +1097,6 @@ async def chat(request: ChatRequest, request_obj: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/search", response_model=SearchResponse)
-async def search(request: SearchRequest):
-    """Search endpoint for chat widget search mode"""
-    try:
-        print(f"Received search request: {request.query}")
-        results = google_search_site(request.query)
-        # Convert markdown to HTML for search results too
-        results_html = md.convert(results)
-        # Make links open in new tab
-        results_html = results_html.replace('<a href=', '<a target="_blank" rel="noopener noreferrer" href=')
-        return SearchResponse(results=results_html)
-    except Exception as e:
-        print(f"Search error: {str(e)}")
-        traceback.print_exc()  # Print full stack trace
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/chat-stream")
 async def chat_stream(request: ChatRequest, request_obj: Request):
     """Streaming chat endpoint using Server-Sent Events"""
@@ -1274,6 +1262,37 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
             yield f'event: error\ndata: {json.dumps({"message": str(e)})}\n\n'
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/search", response_model=SearchResponse)
+async def search(request: SearchRequest, request_obj: Request):
+    """Search endpoint for chat widget search mode"""
+    try:
+        authorization = request_obj.headers.get("authorization", "")
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+        elif request.jwt:
+            token = request.jwt
+        else:
+            raise jwt.InvalidTokenError("JWT token required")
+        jwt.decode(token, JWT_SECRET, algorithms=["HS256"], audience="macromicro.me")
+    except jwt.InvalidTokenError as e:
+        error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"
+        print(f"JWT error in /search: {error_type}")
+        return JSONResponse(status_code=401, content={"message": "您的登入已過期，請重新整理頁面後再試。"})
+
+    try:
+        print(f"Received search request: {request.query}")
+        results = google_search_site(request.query, request.lang)
+        # Convert markdown to HTML for search results too
+        results_html = md.convert(results)
+        # Make links open in new tab
+        results_html = results_html.replace('<a href=', '<a target="_blank" rel="noopener noreferrer" href=')
+        return SearchResponse(results=results_html)
+    except Exception as e:
+        print(f"Search error: {str(e)}")
+        traceback.print_exc()  # Print full stack trace
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/system-prompt", response_model=SystemPromptResponse)
