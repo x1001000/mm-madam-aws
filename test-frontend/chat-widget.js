@@ -1398,6 +1398,7 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtYWNyb21pY3JvLm1lIiwiYXVkIjoibWFjcm9taWNyby5tZSIsInN1YiI6IjEwMDEwMDAiLCJpYXQiOjE3MzM3ODg4MDAsImV4cCI6MTg5MzQ1NjAwMH0.hJe-30wc3KwEJHluEVisjzOShB1Z8ZPobmW_mo1CgSE',
                     },
                     body: JSON.stringify({
                         query: message
