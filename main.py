@@ -16,7 +16,7 @@ import requests
 import re
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pprint import pprint
 import traceback
@@ -615,8 +615,7 @@ def google_search_site(query, lang='tc'):
     results = []
     search_label = {'tc': '全站搜尋', 'sc': '全站搜寻', 'en': 'Search All'}.get(lang, '全站搜尋')
     try:
-        cx = LANG_TO_CX.get(lang, LANG_TO_CX['tc'])
-        r = requests.get(f"https://www.googleapis.com/customsearch/v1?key={SEARCH_API_KEY}&cx={cx}&q={query}")
+        r = requests.get("https://www.googleapis.com/customsearch/v1", params={"key": SEARCH_API_KEY, "cx": LANG_TO_CX[lang], "q": query})
         d = r.json()
         items = d.get('items', [])
         for item in items:
@@ -632,8 +631,7 @@ def google_search_site(query, lang='tc'):
             if '/blog' in item["link"]:
                 results.append(f'📝 [{item["title"]}]({item["link"]})')
         results = sorted(results[:6]) # first 6 results sorted in 📈 📊 📝 order
-        subdomain = LANG_TO_SUBDOMAIN.get(lang, 'www')
-        results.append(f'🔍 [{search_label}](https://{subdomain}.macromicro.me/search?q={query})')
+        results.append(f'🔍 [{search_label}](https://{LANG_TO_SUBDOMAIN[lang]}.macromicro.me/search?q={query})')
         return '\n\n'.join(results)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Google site search error: {e}")
@@ -652,30 +650,31 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
     # Get base system prompt (cached)
     system_prompt, for_paid_user, for_free_user = get_base_system_prompt()
 
+    # Append current Taipei time to system prompt for better time-sensitive responses
+    now_taipei = datetime.now(timezone(timedelta(hours=TAIPEI_OFFSET)))
+    system_prompt += f"\n\n---\n- Taipei time: {now_taipei.strftime('%Y-%m-%d %H:%M')}"
+
     # Determine subdomain based on site language choice
-    SUBDOMAIN = LANG_TO_SUBDOMAIN[lang]
-    system_prompt += f"\n- SUBDOMAIN == '{SUBDOMAIN}'"
+    subdomain = LANG_TO_SUBDOMAIN[lang]
+    system_prompt += f"\n- subdomain == '{subdomain}'"
 
     # For non-financial queries, use the original sequential approach
     if user_prompt_type == 'CUSTOMER_SERVICE':
         # Detect language (single API call, no need for parallelization)
         user_language_code = get_user_language_code(user_prompt, token_counter)
-        system_prompt += f"\n- Regardless of SUBDOMAIN, you MUST respond in user_language_code:='{user_language_code}'"
+        system_prompt += f"\n- Regardless of subdomain, you MUST respond in user_language_code:='{user_language_code}'"
 
         system_prompt += '\n\n---\n' + get_marketing_prompt(lang) + '\n\n---\n'
 
         if config.has_help_center:
             lang_route = LANG_TO_ROUTE[lang]
-            system_prompt += '\n- 若非網站功能操作及客服相關問題，你會婉拒回答'
-            system_prompt += '\n- 切勿提供來信或來電的客服聯繫方式'
-            system_prompt += f'\n- 若未檢索到相關資料，請引導使用者前往[幫助中心](https://support.macromicro.me/hc/{lang_route})自行查詢'
             retrieval, ids = get_retrieval_from_help_center(f'hc/{lang_route}/_log.csv', user_prompt, knowledge, token_counter, N_most_relevant)
             if retrieval:
                 retrieval_ids['help_center'] = ids
                 system_prompt += f'\n- 檢索到的相關資料，超連結至 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
             else:
-                system_prompt += f'\n# 未檢索到相關資料'
+                system_prompt += f'\n# 若用戶提問與上述行銷活動無關，請直接回覆：很抱歉，我無法回答您的問題，建議您前往[幫助中心](https://support.macromicro.me/hc/{lang_route})自行查詢。'
 
         return system_prompt, user_language_code, web_search_queries, retrieval_ids
 
@@ -723,7 +722,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 
     # Process language result
     user_language_code = results_dict.get('language')
-    system_prompt += f"\n- Regardless of SUBDOMAIN, you MUST respond in user_language_code:='{user_language_code}'"
+    system_prompt += f"\n- Regardless of subdomain, you MUST respond in user_language_code:='{user_language_code}'"
 
     if config.is_paid_user:
         system_prompt += f'\n{for_paid_user}\n'
@@ -736,7 +735,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         if retrieval:
             retrieval_ids['chart_tc'] = ids
             system_prompt += '\n- MM圖表的相關資料，當中時間序列（series）包含前值及最新數據，務必引用，並將文字或數據超連結至：'
-            system_prompt += f'https://{SUBDOMAIN}.macromicro.me/charts/{{id}}/{{slug}}'
+            system_prompt += f'https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}'
             system_prompt += f'\n```\n{retrieval}\n```\n'
 
     # Process quickie retrieval
@@ -745,10 +744,10 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         if retrieval:
             retrieval_ids['quickie'] = ids
             system_prompt += '\n- MM短評的相關資料'
-            if SUBDOMAIN == 'en':
+            if subdomain == 'en':
                 system_prompt += '，可引用，但不可提供超連結'
             else:
-                system_prompt += f'，超連結至 https://{SUBDOMAIN}.macromicro.me/quickie?id={{id}}'
+                system_prompt += f'，超連結至 https://{subdomain}.macromicro.me/quickie?id={{id}}'
             system_prompt += f'\n```\n{retrieval}\n```\n'
 
     # Process post retrieval
@@ -757,10 +756,10 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         if retrieval:
             retrieval_ids['post'] = ids
             system_prompt += '\n- MM中文部落格的相關資料'
-            if SUBDOMAIN == 'en':
+            if subdomain == 'en':
                 system_prompt += '，可引用，但不可提供超連結'
             else:
-                system_prompt += f'，超連結至 https://{SUBDOMAIN}.macromicro.me/blog/{{slug}}'
+                system_prompt += f'，超連結至 https://{subdomain}.macromicro.me/blog/{{slug}}'
             system_prompt += f'\n```\n{retrieval}\n```\n'
 
     # Process post_en retrieval
@@ -798,6 +797,8 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
             system_prompt += '\n- 網路搜尋的相關資料'
             system_prompt += f'\n```\n{retrieval}\n```\n'
 
+    now_taipei = datetime.now(timezone(timedelta(hours=TAIPEI_OFFSET)))
+    system_prompt += f"\n\n---\n(Taipei time: {now_taipei.strftime('%Y-%m-%d %H:%M')})"
     return system_prompt, user_language_code, web_search_queries, retrieval_ids
 
 
@@ -820,7 +821,6 @@ def get_role_category(role):
 
 def get_usage_period(period):
     """Compute (start_at, end_at) Unix timestamps in Taipei time for the given period."""
-    from datetime import timezone
     now_utc = datetime.now(timezone.utc)
     taipei_tz = timezone(timedelta(hours=TAIPEI_OFFSET))
     now_taipei = now_utc.astimezone(taipei_tz)
