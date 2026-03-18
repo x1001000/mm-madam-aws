@@ -662,18 +662,20 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         user_language_code = get_user_language_code(user_prompt, token_counter)
         system_prompt += f"\n- Regardless of SUBDOMAIN, you MUST respond in user_language_code:='{user_language_code}'"
 
+        system_prompt += '\n\n---\n' + get_marketing_prompt(lang) + '\n\n---\n'
+
         if config.has_help_center:
             lang_route = LANG_TO_ROUTE[lang]
-            system_prompt += f'\n- MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
+            system_prompt += '\n- 若非網站功能操作及客服相關問題，你會婉拒回答'
             system_prompt += '\n- 切勿提供來信或來電的客服聯繫方式'
+            system_prompt += f'\n- 若未檢索到相關資料，請引導使用者前往[幫助中心](https://support.macromicro.me/hc/{lang_route})自行查詢'
             retrieval, ids = get_retrieval_from_help_center(f'hc/{lang_route}/_log.csv', user_prompt, knowledge, token_counter, N_most_relevant)
             if retrieval:
                 retrieval_ids['help_center'] = ids
-                system_prompt += '\n- MM幫助中心的相關資料'
-                system_prompt += f'（hyperlink pattern: https://support.macromicro.me/hc/{lang_route}/articles/{{id}}）'
+                system_prompt += f'\n- 檢索到的相關資料，超連結至 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
-        system_prompt += '\n- 若非網站功能操作及客服相關問題，你會婉拒回答'
-        system_prompt += '\n\n---\n' + get_marketing_prompt(lang)
+            else:
+                system_prompt += f'\n# 未檢索到相關資料'
 
         return system_prompt, user_language_code, web_search_queries, retrieval_ids
 
@@ -746,7 +748,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
             if SUBDOMAIN == 'en':
                 system_prompt += '，可引用，但不可提供超連結'
             else:
-                system_prompt += f'（hyperlink pattern: https://{SUBDOMAIN}.macromicro.me/quickie?id={{id}}）'
+                system_prompt += f'，超連結至 https://{SUBDOMAIN}.macromicro.me/quickie?id={{id}}'
             system_prompt += f'\n```\n{retrieval}\n```\n'
 
     # Process post retrieval
@@ -758,7 +760,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
             if SUBDOMAIN == 'en':
                 system_prompt += '，可引用，但不可提供超連結'
             else:
-                system_prompt += f'（hyperlink pattern: https://{SUBDOMAIN}.macromicro.me/blog/{{slug}}）'
+                system_prompt += f'，超連結至 https://{SUBDOMAIN}.macromicro.me/blog/{{slug}}'
             system_prompt += f'\n```\n{retrieval}\n```\n'
 
     # Process post_en retrieval
@@ -766,8 +768,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
         retrieval, ids = results_dict['post_en']
         if retrieval:
             retrieval_ids['post_en'] = ids
-            system_prompt += '\n- MM英文部落格的相關資料'
-            system_prompt += f'（hyperlink pattern: https://en.macromicro.me/blog/{{slug}}）'
+            system_prompt += f'\n- MM英文部落格的相關資料，超連結至 https://en.macromicro.me/blog/{{slug}}'
             system_prompt += f'\n```\n{retrieval}\n```\n'
 
     # Process edm retrieval
