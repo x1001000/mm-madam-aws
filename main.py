@@ -143,6 +143,11 @@ DEFAULT_MODEL = 'gemini-3-flash-preview'
 LANG_TO_SUBDOMAIN = {'tc': 'www', 'sc': 'sc', 'en': 'en'}
 LANG_TO_ROUTE = {'tc': 'zh-tw', 'sc': 'zh-cn', 'en': 'en-001'}
 LANG_TO_CX = {'tc': '414d6323cec6d419d', 'sc': '75b3a0dc17f00410a', 'en': 'c5e06c51ebc924baf'}
+CUSTOMER_SERVICE_FALLBACK = {
+    'tc': '可惜這題我還不會，你可以問我其他網站使用、會員權益等問題。或是 Email 聯繫 support@macromicro.me，我們將儘速回覆。',
+    'sc': '可惜这题我还不会，你可以问我其他网站使用、会员权益等问题。或是 Email 联繫 support@macromicro.me，我们将儘速回复。',
+    'en': "Sorry, I can't answer this yet. You can ask about site usage or membership, or Email support@macromicro.me. We'll get back to you soon.",
+}
 
 
 # Request/Response models
@@ -677,7 +682,7 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
                 system_prompt += f'\n- 檢索到的相關資料，超連結至 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}'
                 system_prompt += f'\n```\n{retrieval}\n```\n'
             else:
-                system_prompt += f'\n# 若用戶提問與上述行銷活動無關，請直接回覆：很抱歉，我無法回答您的問題，建議您前往[幫助中心](https://support.macromicro.me/hc/{lang_route})自行查詢。'
+                return None, user_language_code, web_search_queries, retrieval_ids
 
         return system_prompt, user_language_code, web_search_queries, retrieval_ids
 
@@ -990,6 +995,68 @@ async def chat(request: ChatRequest, request_obj: Request):
         # Build system prompt using contents[-2:]
         system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
 
+        # Rule-based template response for CUSTOMER_SERVICE without retrieval
+        if system_prompt is None:
+            response_text = CUSTOMER_SERVICE_FALLBACK[request.lang]
+            response_time = time.time()
+            response_seconds = response_time - request_time
+
+            # Update conversation history
+            contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
+            contents = contents[-2 * config.conversation_rounds:]
+            updated_conversation_history = []
+            for content in contents:
+                updated_conversation_history.append(ChatMessage(
+                    role=content.role,
+                    content=content.parts[0].text
+                ))
+            user_conversation_histories[request.user_id] = updated_conversation_history
+
+            payload = {
+                "user_id": request.user_id,
+                "started": round(session_start_time),
+                "lang": request.lang,
+                "question_type": user_prompt_type,
+                "question": user_prompt,
+                "answer": response_text,
+                "prompt_token_count": token_counter.prompt_token_count,
+                "candidates_token_count": 0,
+                "cached_content_token_count": token_counter.cached_content_token_count,
+                "thoughts_token_count": 0,
+                "tool_use_prompt_token_count": 0,
+                "total_token_count": token_counter.total_token_count,
+                "cost": token_counter.total_cost(),
+                "models_used": "",
+                "extras_json": json.dumps({
+                    "語言": user_language_code,
+                    "分類": user_prompt_type,
+                    "檢索": retrieval_ids,
+                    "搜尋": web_search_queries,
+                    "位於": request.current_page_url
+                }, ensure_ascii=False, indent=2),
+                "requested": round(request_time),
+                "responded": round(response_time),
+                "state": "ok"
+            }
+            requests.post(LOGGER, json=payload)
+
+            return ChatResponse(
+                response_html=convert_to_html(response_text),
+                response_markdown=response_text,
+                cost=token_counter.total_cost(),
+                token_usage={
+                    "prompt_tokens": token_counter.prompt_token_count,
+                    "completion_tokens": 0,
+                    "thinking_tokens": 0,
+                    "total_tokens": token_counter.total_token_count
+                },
+                conversation_history=updated_conversation_history,
+                response_seconds=response_seconds,
+                started=round(session_start_time),
+                requested=round(request_time),
+                responded=round(response_time)
+            )
+
         # Add current page text to system prompt if provided
         if request.current_page_html:
             # Extract main tag content to exclude header and footer
@@ -1168,6 +1235,67 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
             retrieval_ids = {}
 
             system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
+
+            # Rule-based template response for CUSTOMER_SERVICE without retrieval
+            if system_prompt is None:
+                response_text = CUSTOMER_SERVICE_FALLBACK[request.lang]
+                yield f'event: chunk\ndata: {json.dumps({"text": response_text})}\n\n'
+
+                # Update conversation history
+                contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
+                contents = contents[-2 * config.conversation_rounds:]
+                updated_conversation_history = []
+                for content in contents:
+                    updated_conversation_history.append(ChatMessage(
+                        role=content.role,
+                        content=content.parts[0].text
+                    ))
+                user_conversation_histories[request.user_id] = updated_conversation_history
+
+                response_time = time.time()
+                response_seconds = response_time - request_time
+
+                payload = {
+                    "user_id": request.user_id,
+                    "started": round(session_start_time),
+                    "lang": request.lang,
+                    "question_type": user_prompt_type,
+                    "question": user_prompt,
+                    "answer": response_text,
+                    "prompt_token_count": token_counter.prompt_token_count,
+                    "candidates_token_count": 0,
+                    "cached_content_token_count": token_counter.cached_content_token_count,
+                    "thoughts_token_count": 0,
+                    "tool_use_prompt_token_count": 0,
+                    "total_token_count": token_counter.total_token_count,
+                    "cost": token_counter.total_cost(),
+                    "models_used": "",
+                    "extras_json": json.dumps({
+                        "語言": user_language_code,
+                        "分類": user_prompt_type,
+                        "檢索": retrieval_ids,
+                        "搜尋": web_search_queries,
+                        "位於": request.current_page_url
+                    }, ensure_ascii=False, indent=2),
+                    "requested": round(request_time),
+                    "responded": round(response_time),
+                    "state": "ok"
+                }
+                requests.post(LOGGER, json=payload)
+
+                done_data = {
+                    "response_markdown": response_text,
+                    "token_usage": {
+                        "prompt_tokens": token_counter.prompt_token_count,
+                        "completion_tokens": 0,
+                        "thinking_tokens": 0,
+                        "total_tokens": token_counter.total_token_count
+                    },
+                    "cost": token_counter.total_cost(),
+                    "response_seconds": round(response_seconds, 2)
+                }
+                yield f'event: done\ndata: {json.dumps(done_data)}\n\n'
+                return
 
             if request.current_page_html:
                 main_match = re.search(r'<main[^>]*>(.*?)</main>', request.current_page_html, re.DOTALL | re.IGNORECASE)

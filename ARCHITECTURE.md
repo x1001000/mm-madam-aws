@@ -97,7 +97,9 @@ flowchart TD
 
     Support --> DetectLang[偵測使用者語言]
     DetectLang --> HelpCenterRAG[Help Center 檢索]
-    HelpCenterRAG --> BuildPrompt2[建構系統提示詞]
+    HelpCenterRAG --> HCMatch{有匹配資料?}
+    HCMatch -->|是| BuildPrompt2[建構系統提示詞]
+    HCMatch -->|否| Template[回傳固定範本回應]
 
     BuildPrompt1 --> Generate[Gemini 生成回應]
     BuildPrompt2 --> Generate
@@ -106,6 +108,7 @@ flowchart TD
     Generate --> Convert[Markdown 轉 HTML]
     Convert --> Log[記錄日誌]
     Log --> Response([回傳回應])
+    Template --> Log
 ```
 
 ### 處理階段說明
@@ -121,7 +124,7 @@ flowchart TD
 
 3. **知識檢索（RAG）**
    - 財經問題：平行檢索多個知識庫
-   - 客服問題：檢索 Help Center
+   - 客服問題：檢索 Help Center，若無匹配資料則跳過 Gemini，直接回傳固定範本回應（依語言 tc/sc/en）
 
 4. **用量檢查**
    - 訊息分類後、知識檢索前，呼叫 Usage API 檢查用量
