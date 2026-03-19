@@ -591,7 +591,8 @@ async def get_retrieval_from_google_search_async(user_prompt, token_counter):
     try:
         response = await generate_content_async(user_prompt, system_prompt, response_type, response_schema, tools, token_counter)
         response_text = response.text
-        web_search_queries = response.candidates[0].grounding_metadata.web_search_queries
+        grounding_metadata = response.candidates[0].grounding_metadata
+        web_search_queries = grounding_metadata.web_search_queries if grounding_metadata else None
         print(f"[async] get_retrieval_from_google_search_async got {len(response_text)} chars, queries: {web_search_queries}")
         return response_text, list(web_search_queries) if web_search_queries else []
     except Exception as e:
