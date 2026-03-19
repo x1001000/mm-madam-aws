@@ -619,17 +619,19 @@ def google_search_site(query, lang='tc'):
         d = r.json()
         items = d.get('items', [])
         for item in items:
-            print(item["title"])
-            print(item["link"])
+            og_title = item['pagemap']['metatags'][0]['og:title']
+            og_url = item['pagemap']['metatags'][0]['og:url']
+            print(og_title)
+            print(og_url)
             # Skip items with '用戶圖表' or '用户图表' or 'UGC Charts' in title
-            if '用戶圖表' in item["title"] or '用户图表' in item["title"] or 'UGC Charts' in item["title"]:
+            if '用戶圖表' in og_title or '用户图表' in og_title or 'UGC Charts' in og_title:
                 continue
-            if '/series' in item["link"]:
-                results.append(f'📈 [{item["title"]}]({item["link"]})')
-            if '/charts' in item["link"]:
-                results.append(f'📊 [{item["title"]}]({item["link"]})')
-            if '/blog' in item["link"]:
-                results.append(f'📝 [{item["title"]}]({item["link"]})')
+            if '/series' in og_url:
+                results.append(f'📈 [{og_title}]({og_url})')
+            if '/charts' in og_url:
+                results.append(f'📊 [{og_title}]({og_url})')
+            if '/blog' in og_url:
+                results.append(f'📝 [{og_title}]({og_url})')
         results = sorted(results[:6]) # first 6 results sorted in 📈 📊 📝 order
         results.append(f'🔍 [{search_label}](https://{LANG_TO_SUBDOMAIN[lang]}.macromicro.me/search?q={query})')
         return '\n\n'.join(results)
