@@ -35,7 +35,7 @@ MM Madam 是一個基於 FastAPI 開發的 AI 聊天機器人 API，專為 Macro
 | Google Search | 即時網路搜尋（Gemini 原生工具） |
 
 ### 客服功能
-- Help Center 知識庫（2026-03-17 版本）
+- Help Center 知識庫（2026-03-20 版本）
 - 根據使用者語言自動切換 Help Center 區域
 
 ### 使用者分類
