@@ -17,7 +17,6 @@ import re
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 from pprint import pprint
 import traceback
 import threading
@@ -55,13 +54,15 @@ USAGE_LIMITS_DEFAULT = {
 
 TTL_CACHE = {}
 TTL_SECONDS = 300  # 5 minutes
+TTL_KNOWLEDGE_SECONDS = 3600  # 1 hour
 
 
-def ttl_cached(key, fetcher):
-    """Return cached value for key, refreshing via fetcher() if older than TTL."""
+def ttl_cached(key, fetcher, ttl=None):
+    """Return cached value for key, refreshing via fetcher() if older than ttl."""
     now = time.time()
+    ttl = ttl or TTL_SECONDS
     entry = TTL_CACHE.get(key)
-    if not entry or now - entry['t'] > TTL_SECONDS:
+    if not entry or now - entry['t'] > ttl:
         TTL_CACHE[key] = {'data': fetcher(), 't': now}
     return TTL_CACHE[key]['data']
 
@@ -288,8 +289,7 @@ def get_marketing_prompt(lang='tc'):
     return prompts[1] if lang == 'en' else prompts[0]
 
 
-@lru_cache(maxsize=1)  # heavy operation (downloads podcasts + CSVs), keep cold-start-only
-def get_knowledge():
+def fetch_knowledge():
     knowledge = {}
     try:
         # create podcast.csv from podcast transcripts in PODCAST_FOLDER_URL
@@ -412,6 +412,11 @@ def get_knowledge():
     print(f"Knowledge loaded successfully!\n{knowledge.keys()}")
 
     return knowledge
+
+
+def get_knowledge():
+    return ttl_cached('knowledge', fetch_knowledge, ttl=TTL_KNOWLEDGE_SECONDS)
+
 knowledge = get_knowledge()
 
 
@@ -993,7 +998,7 @@ async def chat(request: ChatRequest, request_obj: Request):
         retrieval_ids = {}
 
         # Build system prompt using contents[-2:]
-        system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
+        system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, get_knowledge(), token_counter, request.lang)
 
         # Rule-based template response for CUSTOMER_SERVICE without retrieval
         if system_prompt is None:
@@ -1234,7 +1239,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
             web_search_queries = []
             retrieval_ids = {}
 
-            system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, knowledge, token_counter, request.lang)
+            system_prompt, user_language_code, web_search_queries, retrieval_ids = await build_system_prompt(user_prompt_type, contents[-2:], config, get_knowledge(), token_counter, request.lang)
 
             # Rule-based template response for CUSTOMER_SERVICE without retrieval
             if system_prompt is None:

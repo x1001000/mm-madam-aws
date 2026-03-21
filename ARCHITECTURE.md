@@ -212,7 +212,7 @@ flowchart LR
    - 大幅減少等待時間
 
 4. **知識庫載入**
-   - CSV 知識庫資料於 Lambda 啟動時同步載入（使用 `httpx.Client`，相容 Lambda 事件迴圈）
+   - CSV 知識庫資料於 Lambda 冷啟動時同步載入（使用 `httpx.Client`，相容 Lambda 事件迴圈），並透過 TTL 快取（1 小時）定期刷新
    - Podcast 資料透過 gdown 獨立下載，失敗不影響其他知識庫
 
 ### 知識庫資料結構
@@ -393,7 +393,7 @@ flowchart LR
 
 2. **快取機制**
    - 系統提示詞、行銷提示詞、用量限制使用 TTL 快取（5 分鐘自動刷新）
-   - 知識庫資料在 Lambda 啟動時同步載入並快取（使用 httpx 同步客戶端，避免 Lambda 事件迴圈衝突）
+   - 知識庫資料使用 TTL 快取（1 小時自動刷新），冷啟動時預先載入（使用 httpx 同步客戶端，避免 Lambda 事件迴圈衝突）
 
 3. **HTTP 連線池**
    - 使用 `httpx.AsyncClient` 管理非同步 HTTP 請求
