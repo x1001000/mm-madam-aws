@@ -58,12 +58,19 @@ TTL_KNOWLEDGE_SECONDS = 3600  # 1 hour
 
 
 def ttl_cached(key, fetcher, ttl=None):
-    """Return cached value for key, refreshing via fetcher() if older than ttl."""
+    """Return cached value for key, refreshing via fetcher() if older than ttl.
+    Stale-while-revalidate: if stale data exists, return it immediately and refresh in background."""
     now = time.time()
     ttl = ttl or TTL_SECONDS
     entry = TTL_CACHE.get(key)
-    if not entry or now - entry['t'] > ttl:
+    if not entry:
+        # Cold start: must block
         TTL_CACHE[key] = {'data': fetcher(), 't': now}
+    elif now - entry['t'] > ttl:
+        # Stale: return old data, refresh in background
+        def _refresh():
+            TTL_CACHE[key] = {'data': fetcher(), 't': time.time()}
+        threading.Thread(target=_refresh, daemon=True).start()
     return TTL_CACHE[key]['data']
 
 
