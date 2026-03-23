@@ -35,7 +35,7 @@ MM Madam 是一個基於 FastAPI 開發的 AI 聊天機器人 API，專為 Macro
 | Google Search | 即時網路搜尋（Gemini 原生工具） |
 
 ### 客服功能
-- Help Center 知識庫（2026-03-20 版本）
+- Help Center 知識庫（透過 KNOWLEDGE_CSV_API 取得 Zendesk CSV）
 - 根據使用者語言自動切換 Help Center 區域
 
 ### 使用者分類
@@ -298,11 +298,6 @@ mm-madam-aws/
 │   ├── index.html       # 測試頁面
 │   ├── chat-widget.js   # 前端聊天視窗元件
 │   └── *.png            # 圖示資源
-├── knowledge/           # Help Center 知識庫
-│   └── <date>/
-│       ├── zh-tw/       # 繁體中文文章
-│       ├── zh-cn/       # 簡體中文文章
-│       └── en-001/      # 英文文章
 └── .env                 # 環境變數（不納入版控）
 ```
 

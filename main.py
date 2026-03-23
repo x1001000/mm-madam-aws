@@ -351,7 +351,7 @@ def fetch_knowledge():
         print(f"Error loading podcasts: {e}")
 
     # Local CSV files
-    local_csv_files = glob.glob('knowledge/*/*/_log.csv')
+    local_csv_files = []
     if os.path.exists('/tmp/podcast.csv'):
         local_csv_files.append('/tmp/podcast.csv')
 
@@ -362,6 +362,9 @@ def fetch_knowledge():
         f'{KNOWLEDGE_CSV_API}/post.csv',
         f'{KNOWLEDGE_CSV_API}/post_en.csv',
         f'{KNOWLEDGE_CSV_API}/edm.csv',
+        f'{KNOWLEDGE_CSV_API}/zendesk_tc.csv',
+        f'{KNOWLEDGE_CSV_API}/zendesk_sc.csv',
+        f'{KNOWLEDGE_CSV_API}/zendesk_en.csv',
     ]
 
     # Fetch all remote CSVs synchronously (asyncio.run() fails inside Lambda's event loop)
@@ -393,12 +396,8 @@ def fetch_knowledge():
             if data and 'date' in data[0]:
                 data = [row for row in data if row['date'] > AFTER_DATE]
 
-            # Extract key: remove 'knowledge/', '/tmp/', or 'csv/' prefixes
-            csv_file_key = csv_file.split('knowledge/')[-1].split('/tmp/')[-1].split('csv/')[-1]
-            if '/' in csv_file_key:
-                global cutoff
-                cutoff, lang_route_csv = csv_file_key.split('/', maxsplit=1)
-                csv_file_key = f'hc/{lang_route_csv}'
+            # Extract key: remove '/tmp/' or 'csv/' prefixes
+            csv_file_key = csv_file.split('/tmp/')[-1].split('csv/')[-1]
             knowledge[csv_file_key] = data
 
             # Create first 2 columns JSON equivalent
@@ -551,6 +550,10 @@ async def get_retrieval_async(csv_file, user_prompt, knowledge, token_counter, N
         if ids:
             data = knowledge[csv_file]
             filtered_data = [row for row in data if int(row.get('id', 0)) in ids]
+            if csv_file.startswith('zendesk_'):
+                for row in filtered_data:
+                    if 'Body' in row:
+                        row['Body'] = markdownify(row['Body'])
             return json.dumps(filtered_data, ensure_ascii=False), ids
         return None, []
     except Exception as e:
@@ -609,17 +612,6 @@ async def get_retrieval_from_google_search_async(user_prompt, token_counter):
         print(f"[async] get_retrieval_from_google_search_async error: {e}")
         raise HTTPException(status_code=500, detail=f"Google search error: {e}")
 
-
-def get_retrieval_from_help_center(csv_file, user_prompt, knowledge, token_counter, N_most_relevant):
-    if ids := get_most_relevant_ids(csv_file + '=>df.iloc[:,:2].to_json', user_prompt, knowledge, token_counter, N_most_relevant):
-        # Create list of dictionaries instead of DataFrame
-        data = []
-        for _id in ids:
-            with open(f'knowledge/{cutoff}' + csv_file.replace('hc', '').replace('_log', str(_id)).replace('csv', 'html')) as f:
-                html_content = ''.join(f.readlines())
-            data.append({'id': _id, 'markdown': markdownify(html_content)})
-        return json.dumps(data, ensure_ascii=False), ids
-    return None, []
 
 
 def google_search_site(query, lang='tc'):
@@ -681,7 +673,8 @@ async def build_system_prompt(user_prompt_type, contents, config, knowledge, tok
 
         if config.has_help_center:
             lang_route = LANG_TO_ROUTE[lang]
-            retrieval, ids = get_retrieval_from_help_center(f'hc/{lang_route}/_log.csv', user_prompt, knowledge, token_counter, N_most_relevant)
+            zendesk_csv = {'tc': 'zendesk_tc.csv', 'sc': 'zendesk_sc.csv', 'en': 'zendesk_en.csv'}[lang]
+            retrieval, ids = await get_retrieval_async(zendesk_csv, user_prompt, knowledge, token_counter, N_most_relevant)
             if retrieval:
                 retrieval_ids['help_center'] = ids
                 system_prompt += f'\n- 檢索到的相關資料，超連結至 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}'

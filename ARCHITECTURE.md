@@ -223,6 +223,7 @@ flowchart LR
 | quickie | id, title, content, date | Knowledge CSV API |
 | post | id, slug, title, markdown, date | Knowledge CSV API |
 | edm | id, title, markdown, date | Knowledge CSV API |
+| zendesk_tc/sc/en | id, Title, Body | Knowledge CSV API |
 | podcast | id, title, date, markdown | Google Drive (gdown) |
 
 ---

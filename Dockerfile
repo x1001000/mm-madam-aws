@@ -20,8 +20,5 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY main.py .
 COPY test-frontend/ ./test-frontend/
 
-# Help center knowledge base: HTML articles and CSV indexes (sets the `cutoff` global in main.py)
-COPY knowledge/ ./knowledge/
-
 # Start uvicorn; Lambda Web Adapter forwards Lambda events to this server
 CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
