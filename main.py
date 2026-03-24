@@ -198,7 +198,7 @@ class ConfigModel(BaseModel):
     has_google_search: bool = True
     has_help_center: bool = True
     conversation_rounds: int = 2
-    thinking_budget: int = 500
+    thinking_level: str = "low"
     quality_model: str = DEFAULT_MODEL
     N_most_relevant: int = 5
     no_single_series: bool = False
@@ -426,7 +426,7 @@ def get_knowledge():
 knowledge = get_knowledge()
 
 
-def generate_content(contents, system_prompt, response_type, response_schema, tools, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_budget=0)):
+def generate_content(contents, system_prompt, response_type, response_schema, tools, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_level="minimal")):
     response = client.models.generate_content(
         model=model,
         contents=contents,
@@ -444,7 +444,7 @@ def generate_content(contents, system_prompt, response_type, response_schema, to
     return response
 
 
-async def generate_content_async(contents, system_prompt, response_type, response_schema, tools, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_budget=0)):
+async def generate_content_async(contents, system_prompt, response_type, response_schema, tools, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_level="minimal")):
     try:
         # Create fresh client to avoid "Event loop is closed" error on subsequent requests
         async_client = genai.Client()
@@ -466,7 +466,7 @@ async def generate_content_async(contents, system_prompt, response_type, respons
         raise
 
 
-async def generate_content_stream(contents, system_prompt, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_budget=0)):
+async def generate_content_stream(contents, system_prompt, token_counter, model=DEFAULT_MODEL, thinking_config=types.ThinkingConfig(thinking_level="minimal")):
     async_client = genai.Client()
     last_usage = None
     async for chunk in await async_client.aio.models.generate_content_stream(
@@ -1077,8 +1077,8 @@ async def chat(request: ChatRequest, request_obj: Request):
         response_type = 'text/plain'
         response_schema = None
         tools = None#[types.Tool(function_declarations=function_declarations)]
-        # print('config.thinking_budget', config.thinking_budget)
-        response_text = generate_content(contents, system_prompt, response_type, response_schema, tools, token_counter, model=config.quality_model, thinking_config=types.ThinkingConfig(thinking_budget=config.thinking_budget)).text
+
+        response_text = generate_content(contents, system_prompt, response_type, response_schema, tools, token_counter, model=config.quality_model, thinking_config=types.ThinkingConfig(thinking_level=config.thinking_level)).text
         contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
         # Keep only previous N rounds of conversation history
         contents = contents[-2 * config.conversation_rounds:]
@@ -1313,7 +1313,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
 
             # Stream Gemini response
             response_text = ""
-            async for chunk_text in generate_content_stream(contents, system_prompt, token_counter, model=config.quality_model, thinking_config=types.ThinkingConfig(thinking_budget=config.thinking_budget)):
+            async for chunk_text in generate_content_stream(contents, system_prompt, token_counter, model=config.quality_model, thinking_config=types.ThinkingConfig(thinking_level=config.thinking_level)):
                 response_text += chunk_text
                 yield f'event: chunk\ndata: {json.dumps({"text": chunk_text})}\n\n'
 

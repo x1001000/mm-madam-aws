@@ -401,5 +401,5 @@ flowchart LR
    - 重複使用連線減少延遲
 
 4. **Token 預算控制**
-   - 透過 `thinking_budget` 控制 Gemini 思考深度
+   - 透過 `thinking_level` 控制 Gemini 思考深度 (`low`, `medium`, `high`)
    - 平衡回應品質與成本

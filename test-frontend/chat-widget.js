@@ -799,8 +799,12 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                             </div>
                             <div class="mm-config-item">
                                 <label>
-                                    🧠 Thinking Budget:
-                                    <input type="number" id="thinkingBudget" value="500" min="1000" max="20000" step="1000" style="width: 80px; margin-left: 10px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                    🧠 Thinking Level:
+                                    <select id="thinkingLevel" style="width: 100px; margin-left: 10px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="low" selected>low</option>
+                                        <option value="medium">medium</option>
+                                        <option value="high">high</option>
+                                    </select>
                                     of Quality Model:
                                     <select id="qualityModel" style="width: 120px; margin-left: 10px; padding: 2px 6px; border: 1px solid #ddd; border-radius: 4px;">
                                         <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
@@ -895,7 +899,7 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 conversationRounds: document.getElementById('conversationRounds'),
                 nMostRelevant: document.getElementById('nMostRelevant'),
                 noSingleSeries: document.getElementById('noSingleSeries'),
-                thinkingBudget: document.getElementById('thinkingBudget'),
+                thinkingLevel: document.getElementById('thinkingLevel'),
                 qualityModel: document.getElementById('qualityModel'),
                 useStreaming: document.getElementById('useStreaming')
             };
@@ -1169,10 +1173,6 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
         }
 
         getConfig() {
-            console.log('thinkingBudget element:', this.configElements.thinkingBudget);
-            console.log('thinkingBudget value:', this.configElements.thinkingBudget?.value);
-            console.log('thinkingBudget parsed:', this.configElements.thinkingBudget?.value !== '' ? parseInt(this.configElements.thinkingBudget?.value) : 500);
-            
             return {
                 is_paid_user: this.configElements.isPaidUser.checked,
                 has_chart: this.configElements.hasChart.checked,
@@ -1185,7 +1185,7 @@ if (window.location.origin === 'https://bop24wysqopcnedomvrl4jm3je0itxaa.lambda-
                 conversation_rounds: parseInt(this.configElements.conversationRounds.value) || 1,
                 N_most_relevant: parseInt(this.configElements.nMostRelevant.value) || 5,
                 no_single_series: this.configElements.noSingleSeries.checked,
-                thinking_budget: this.configElements.thinkingBudget.value !== '' ? parseInt(this.configElements.thinkingBudget.value) : 500,
+                thinking_level: this.configElements.thinkingLevel.value || 'low',
                 quality_model: this.configElements.qualityModel.value || 'gemini-3-flash-preview'
             };
         }

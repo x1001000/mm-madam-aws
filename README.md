@@ -145,7 +145,7 @@ docker run -p 9000:8080 --env-file .env mm-madam
     "has_google_search": true,
     "has_help_center": true,
     "conversation_rounds": 2,
-    "thinking_budget": 500,
+    "thinking_level": "low",
     "quality_model": "gemini-3-flash-preview",
     "N_most_relevant": 5
   },
@@ -228,7 +228,7 @@ docker run -p 9000:8080 --env-file .env mm-madam
 | `has_google_search` | `true` | 啟用 Google 搜尋 |
 | `has_help_center` | `true` | 啟用 Help Center 檢索 |
 | `conversation_rounds` | `2` | 對話歷史保留輪數 |
-| `thinking_budget` | `500` | Gemini 思考 token 預算 |
+| `thinking_level` | `"low"` | Gemini 思考深度 (`low`, `medium`, `high`) |
 | `quality_model` | `gemini-3-flash-preview` | 使用的 AI 模型 |
 | `N_most_relevant` | `5` | 每個知識庫檢索的最大項目數 |
 | `no_single_series` | `false` | 過濾單一序列圖表 |
