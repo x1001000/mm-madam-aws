@@ -115,7 +115,7 @@ flowchart TD
 
 1. **JWT 驗證**
    - 驗證使用者身份
-   - 依 JWT role 判斷付費狀態（FREE→免費用戶，BIZ*→付費，其他→付費）
+   - 依 JWT role 判斷付費狀態（FREE→免費用戶，BIZ*→企業用戶，其他→付費）
    - 驗證失敗則回傳錯誤訊息
 
 2. **訊息分類**
@@ -370,7 +370,7 @@ flowchart LR
     Verify -->|是| CheckRole{檢查角色}
 
     CheckRole -->|FREE| Free["免費用戶功能"]
-    CheckRole -->|BIZ*| Biz["付費用戶（無限額）"]
+    CheckRole -->|BIZ*| Biz["企業用戶（有限額）"]
     CheckRole -->|其他| Paid["付費用戶（有限額）"]
 ```
 

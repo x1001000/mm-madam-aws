@@ -47,8 +47,9 @@ MCP_USER_ID = 101001000
 TAIPEI_OFFSET = 8
 PERIOD_MAP = {'day': 'daily', 'week': 'weekly', 'month': 'monthly'}
 USAGE_LIMITS_DEFAULT = {
-    'FREE': {'CUSTOMER_SERVICE': (10, 'weekly'), 'MACROECONOMICS': (0, 'monthly')},
-    'PAID': {'CUSTOMER_SERVICE': (10, 'weekly'), 'MACROECONOMICS': (5, 'monthly')},
+    'FREE': {'CUSTOMER_SERVICE': (5, 'weekly'), 'MACROECONOMICS': (0, 'monthly')},
+    'PAID': {'CUSTOMER_SERVICE': (5, 'weekly'), 'MACROECONOMICS': (5, 'monthly')},
+    'BIZ': {'CUSTOMER_SERVICE': (100, 'daily'), 'MACROECONOMICS': (100, 'weekly')},
 }
 
 
@@ -858,9 +859,6 @@ async def check_usage_limits(user_id, question_type, role_category):
     Returns None if OK, or a list of exceeded limits if over quota.
     Fails open on API errors.
     """
-    if role_category == 'BIZ':
-        return None
-
     limits = get_usage_limits().get(role_category, {})
     limit_entry = limits.get(question_type)
     if not limit_entry:
