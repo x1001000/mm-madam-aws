@@ -500,7 +500,7 @@ def get_user_prompt_type(contents, token_counter):
 
 
 def get_user_language_code(user_prompt, token_counter):
-    system_prompt = 'Given a user query, identify its language code. For Chinese, always return zh-tw for Traditional Chinese or zh-cn for Simplified Chinese, never just zh.'
+    system_prompt = 'Identify the language code of the query; for Chinese, use "zh-tw" (Traditional) or "zh-cn" (Simplified); never output "zh"; output only the code.'
     response_type = 'application/json'
     response_schema = str
     tools = None
@@ -525,7 +525,7 @@ def get_most_relevant_ids(csv_df_json, user_prompt, knowledge, token_counter, N_
 
 # Async versions of retrieval functions for parallel execution
 async def get_user_language_code_async(user_prompt, token_counter):
-    system_prompt = 'Given a user query, identify its language code. For Chinese, always return zh-tw for Traditional Chinese or zh-cn for Simplified Chinese, never just zh.'
+    system_prompt = 'Identify the language code of the query; for Chinese, use "zh-tw" (Traditional) or "zh-cn" (Simplified); never output "zh"; output only the code.'
     response_type = 'application/json'
     response_schema = str
     tools = None
@@ -998,11 +998,11 @@ async def chat(request: ChatRequest, request_obj: Request):
                 "cost": token_counter.total_cost(),
                 "models_used": "",
                 "extras_json": json.dumps({
-                    "身份": user_role,
-                    "語言": user_language_code,
-                    "檢索": retrieval_ids,
-                    "搜尋": web_search_queries,
-                    "位於": request.current_page_url
+                    "sub_level": user_role,
+                    "lang_code": user_language_code,
+                    "retrieval_ids": retrieval_ids,
+                    "search_queries": web_search_queries,
+                    "current_page": request.current_page_url
                 }, ensure_ascii=False, indent=2),
                 "requested": round(request_time),
                 "responded": round(response_time),
@@ -1102,11 +1102,11 @@ async def chat(request: ChatRequest, request_obj: Request):
             "cost": token_counter.total_cost(),
             "models_used": config.quality_model,
             "extras_json": json.dumps({
-                "身份": user_role,
-                "語言": user_language_code,
-                "檢索": retrieval_ids,
-                "搜尋": web_search_queries,
-                "位於": request.current_page_url
+                "sub_level": user_role,
+                "lang_code": user_language_code,
+                "retrieval_ids": retrieval_ids,
+                "search_queries": web_search_queries,
+                "current_page": request.current_page_url
             }, ensure_ascii=False, indent=2),
             "requested": round(request_time),
             "responded": round(response_time),
@@ -1241,11 +1241,11 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
                     "cost": token_counter.total_cost(),
                     "models_used": "",
                     "extras_json": json.dumps({
-                        "身份": user_role,
-                        "語言": user_language_code,
-                        "檢索": retrieval_ids,
-                        "搜尋": web_search_queries,
-                        "位於": request.current_page_url
+                        "sub_level": user_role,
+                        "lang_code": user_language_code,
+                        "retrieval_ids": retrieval_ids,
+                        "search_queries": web_search_queries,
+                        "current_page": request.current_page_url
                     }, ensure_ascii=False, indent=2),
                     "requested": round(request_time),
                     "responded": round(response_time),
@@ -1333,11 +1333,11 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
                 "cost": token_counter.total_cost(),
                 "models_used": config.quality_model,
                 "extras_json": json.dumps({
-                    "身份": user_role,
-                    "語言": user_language_code,
-                    "檢索": retrieval_ids,
-                    "搜尋": web_search_queries,
-                    "位於": request.current_page_url
+                    "sub_level": user_role,
+                    "lang_code": user_language_code,
+                    "retrieval_ids": retrieval_ids,
+                    "search_queries": web_search_queries,
+                    "current_page": request.current_page_url
                 }, ensure_ascii=False, indent=2),
                 "requested": round(request_time),
                 "responded": round(response_time),
