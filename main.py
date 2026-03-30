@@ -998,8 +998,8 @@ async def chat(request: ChatRequest, request_obj: Request):
                 "cost": token_counter.total_cost(),
                 "models_used": "",
                 "extras_json": json.dumps({
+                    "身份": user_role,
                     "語言": user_language_code,
-                    "分類": user_prompt_type,
                     "檢索": retrieval_ids,
                     "搜尋": web_search_queries,
                     "位於": request.current_page_url
@@ -1102,8 +1102,8 @@ async def chat(request: ChatRequest, request_obj: Request):
             "cost": token_counter.total_cost(),
             "models_used": config.quality_model,
             "extras_json": json.dumps({
+                "身份": user_role,
                 "語言": user_language_code,
-                "分類": user_prompt_type,
                 "檢索": retrieval_ids,
                 "搜尋": web_search_queries,
                 "位於": request.current_page_url
@@ -1241,8 +1241,8 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
                     "cost": token_counter.total_cost(),
                     "models_used": "",
                     "extras_json": json.dumps({
+                        "身份": user_role,
                         "語言": user_language_code,
-                        "分類": user_prompt_type,
                         "檢索": retrieval_ids,
                         "搜尋": web_search_queries,
                         "位於": request.current_page_url
@@ -1333,8 +1333,8 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
                 "cost": token_counter.total_cost(),
                 "models_used": config.quality_model,
                 "extras_json": json.dumps({
+                    "身份": user_role,
                     "語言": user_language_code,
-                    "分類": user_prompt_type,
                     "檢索": retrieval_ids,
                     "搜尋": web_search_queries,
                     "位於": request.current_page_url
