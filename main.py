@@ -175,6 +175,7 @@ class ChatRequest(BaseModel):
     current_page_html: Optional[str] = None  # text content of the page where chat bubble is used
     current_page_url: Optional[str] = None  # URL of the page where chat bubble is used (for logging)
     lang: str = 'tc'
+    tracking_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -1004,6 +1005,7 @@ async def chat(request: ChatRequest, request_obj: Request):
                     "search_queries": web_search_queries,
                     "current_page": request.current_page_url
                 }, ensure_ascii=False, indent=2),
+                "tracking_id": request.tracking_id,
                 "requested": round(request_time),
                 "responded": round(response_time),
                 "state": "ok"
@@ -1108,6 +1110,7 @@ async def chat(request: ChatRequest, request_obj: Request):
                 "search_queries": web_search_queries,
                 "current_page": request.current_page_url
             }, ensure_ascii=False, indent=2),
+            "tracking_id": request.tracking_id,
             "requested": round(request_time),
             "responded": round(response_time),
             "state": "ok"
@@ -1247,6 +1250,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
                         "search_queries": web_search_queries,
                         "current_page": request.current_page_url
                     }, ensure_ascii=False, indent=2),
+                    "tracking_id": request.tracking_id,
                     "requested": round(request_time),
                     "responded": round(response_time),
                     "state": "ok"
@@ -1339,6 +1343,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
                     "search_queries": web_search_queries,
                     "current_page": request.current_page_url
                 }, ensure_ascii=False, indent=2),
+                "tracking_id": request.tracking_id,
                 "requested": round(request_time),
                 "responded": round(response_time),
                 "state": "ok"
