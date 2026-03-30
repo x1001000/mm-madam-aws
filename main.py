@@ -912,41 +912,8 @@ async def chat(request: ChatRequest, request_obj: Request):
                 config.is_paid_user = False
     except jwt.InvalidTokenError as e:
         error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"
-        print(f"JWT error: {error_type}")
-        error_time = time.time()
-        error_message = "您的登入已過期，請重新整理頁面後再試。"
-        payload = {
-            "user_id": request.user_id,
-            "started": round(error_time),
-            "lang": request.lang,
-            "question_type": "",
-            "question": request.message,
-            "answer": error_message,
-            "prompt_token_count": 0,
-            "candidates_token_count": 0,
-            "cached_content_token_count": 0,
-            "thoughts_token_count": 0,
-            "tool_use_prompt_token_count": 0,
-            "total_token_count": 0,
-            "cost": 0,
-            "models_used": "",
-            "extras_json": json.dumps({"error": error_type}),
-            "requested": round(error_time),
-            "responded": round(error_time),
-            "state": "error"
-        }
-        requests.post(LOGGER, json=payload)
-        return ChatResponse(
-            response_html=error_message,
-            response_markdown=error_message,
-            cost=0,
-            token_usage={"prompt_tokens": 0, "completion_tokens": 0, "thinking_tokens": 0, "total_tokens": 0},
-            conversation_history=[],
-            response_seconds=0,
-            started=round(error_time),
-            requested=round(error_time),
-            responded=round(error_time)
-        )
+        print(f"JWT error in /chat: {error_type}")
+        return JSONResponse(status_code=401, content={"message": "您的登入已過期，請重新整理頁面後再試。"})
 
     request_time = time.time()
     token_counter = TokenCounter()
@@ -1194,7 +1161,7 @@ async def chat_stream(request: ChatRequest, request_obj: Request):
             config.is_paid_user = False
     except jwt.InvalidTokenError as e:
         error_type = "token_expired" if isinstance(e, jwt.ExpiredSignatureError) else f"invalid_token: {str(e)}"
-        print(f"JWT error: {error_type}")
+        print(f"JWT error in /chat-stream: {error_type}")
         return JSONResponse(status_code=401, content={"message": "您的登入已過期，請重新整理頁面後再試。"})
 
     request_time = time.time()
